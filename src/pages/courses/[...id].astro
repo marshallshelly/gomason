@@ -124,4 +124,37 @@ const part = PARTS.find((p) => p.id === lesson.data.part);
       <p>Built in the open. MIT licensed.</p>
     </footer>
   </div>
+
+  <script>
+    // Copy buttons are progressive enhancement — no island needed. Output
+    // blocks are skipped: nobody needs to copy what their terminal printed.
+    for (const pre of document.querySelectorAll<HTMLPreElement>(".prose pre")) {
+      if (pre.dataset.language === "text") continue;
+      const source = pre.querySelector("code")?.innerText ?? "";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "copy-btn";
+      button.textContent = "Copy";
+      button.setAttribute("aria-label", "Copy code to clipboard");
+
+      let timer: ReturnType<typeof setTimeout>;
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(source);
+        } catch {
+          return;
+        }
+        button.textContent = "Copied";
+        button.dataset.done = "true";
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          button.textContent = "Copy";
+          delete button.dataset.done;
+        }, 1600);
+      });
+
+      pre.appendChild(button);
+    }
+  </script>
 </Layout>

@@ -1,11 +1,118 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import { getCollection } from "astro:content";
+import Layout from "../layouts/Layout.astro";
+import Logo from "../components/Logo.astro";
+import Curriculum from "../components/Curriculum.tsx";
+import { PARTS } from "../content.config";
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const lessons = (await getCollection("lessons"))
+  .map((entry) => ({ id: entry.id, ...entry.data }))
+  .sort((a, b) => a.order - b.order);
+
+const totalHours = Math.round((lessons.reduce((s, l) => s + l.minutes, 0) / 60) * 10) / 10;
 ---
 
 <Layout>
-	<Welcome />
+  <div class="mx-auto max-w-5xl px-6">
+    <header class="flex items-center justify-between py-6">
+      <Logo size={30} wordmark />
+      <nav class="flex items-center gap-6 text-sm">
+        <a href="#curriculum" class="text-muted-foreground hover:text-foreground transition-colors">Curriculum</a>
+        <a href="https://github.com/gomason" class="text-muted-foreground hover:text-foreground transition-colors">GitHub</a>
+        <button
+          id="theme-toggle"
+          type="button"
+          class="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          aria-label="Toggle colour theme"
+        >
+          Theme
+        </button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="py-16 sm:py-24">
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-cyan">
+          Free &middot; Open source &middot; Work in progress
+        </p>
+        <h1 class="mt-5 text-5xl sm:text-6xl leading-[1.05] tracking-tight">
+          Learn Go by building<br />a real ORM.
+        </h1>
+        <p class="mt-6 max-w-[60ch] text-lg text-muted-foreground">
+          Most Go tutorials stop at a todo list. This one ends with a working
+          PostgreSQL ORM — struct-tag schemas, a generic query builder, an AST
+          loader, and a migration engine that diffs your code against a live
+          database.
+        </p>
+        <p class="mt-4 max-w-[60ch] text-muted-foreground">
+          In masonry, a <span class="text-foreground font-medium">course</span> is
+          one horizontal row of stones. A wall is raised course by course. So is
+          this.
+        </p>
+
+        <div class="mt-9 flex flex-wrap items-center gap-3">
+          <a
+            href="#curriculum"
+            class="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Start with course 01
+          </a>
+          <a
+            href="https://github.com/gomason"
+            class="rounded-md border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Read the source
+          </a>
+        </div>
+      </section>
+
+      <section class="pb-20">
+        <div class="rounded-lg border border-border bg-card overflow-hidden">
+          <div class="flex items-center gap-2 border-b border-border px-4 py-2.5">
+            <span class="font-mono text-xs text-muted-foreground">what you will have written by the end</span>
+          </div>
+          <pre class="overflow-x-auto p-5 text-[13px] leading-relaxed"><code><span class="text-mortar">// One struct is the source of truth.</span>
+<span class="text-cyan">type</span> User <span class="text-cyan">struct</span> &#123;
+    ID    <span class="text-cyan">string</span> <span class="text-stone">`po:"id,primaryKey,uuid"`</span>
+    Email <span class="text-cyan">string</span> <span class="text-stone">`po:"email,varchar(320),unique"`</span>
+&#125;
+
+<span class="text-mortar">// Queries come back typed. No reflection at the call site.</span>
+users, err := builder.Select[User](qb).
+    Where(builder.Gte(<span class="text-stone">"age"</span>, <span class="text-stone">18</span>)).
+    All(ctx)</code></pre>
+        </div>
+      </section>
+
+      <section id="curriculum" class="pb-24 scroll-mt-8">
+        <h2 class="text-3xl tracking-tight">The courses</h2>
+        <p class="mt-3 max-w-[60ch] text-muted-foreground">
+          {lessons.length} courses, roughly {totalHours} hours of building. It starts
+          at <code class="text-foreground">go mod init</code> — no Go experience assumed —
+          and every language feature arrives just before the chapter that needs it.
+        </p>
+        <p class="mt-3 max-w-[60ch] text-sm text-mortar">
+          Tick one off as you finish it. Progress is stored in your browser, so
+          there is nothing to sign up for.
+        </p>
+
+        <div class="mt-10">
+          <Curriculum client:load lessons={lessons} parts={[...PARTS]} />
+        </div>
+      </section>
+    </main>
+
+    <footer class="flex flex-wrap items-center justify-between gap-4 border-t border-border py-8 text-sm text-muted-foreground">
+      <Logo size={22} />
+      <p>Built in the open. MIT licensed.</p>
+    </footer>
+  </div>
+
+  <script>
+    const toggle = document.getElementById("theme-toggle");
+    toggle?.addEventListener("click", () => {
+      const isDark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("gomason-theme", isDark ? "dark" : "light");
+    });
+  </script>
 </Layout>

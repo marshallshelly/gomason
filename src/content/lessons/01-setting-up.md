@@ -308,12 +308,24 @@ without opening a browser — try `go doc fmt.Printf`.
 
 ## Exercise
 
+You already have everything you need to do this: the `greet` module you built
+above is a real Go project on your disk. There is nothing to install and no
+sandbox to open — you edit the files and run one command.
+
 Extend `Greet` so that an empty name produces `"Hello, stranger!"` rather than
 `"Hello, !"`. Add a second test case for it.
 
-Then, deliberately, write the test **first** and watch it fail before you make
-it pass. Every course from here ends with tests, and getting used to reading a
-red failure now will save you time later.
+Write the test **first** and watch it fail before you make it pass:
+
+```bash
+cd greet
+go test ./...   # red
+# ...now edit Greet
+go test ./...   # green
+```
+
+Every course from here ends with tests, and getting used to reading a red
+failure now will save you time later.
 
 <details>
 <summary>One way to do it</summary>

@@ -1,0 +1,14 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <g fill="currentColor">
+    <rect x="5.5" y="72" width="20" height="15" rx="2" />
+    <rect x="28.5" y="72" width="20" height="15" rx="2" />
+    <rect x="51.5" y="72" width="20" height="15" rx="2" />
+    <rect x="74.5" y="72" width="20" height="15" rx="2" />
+    <rect x="28.5" y="54" width="20" height="15" rx="2" />
+    <rect x="51.5" y="54" width="20" height="15" rx="2" />
+    <rect x="74.5" y="54" width="20" height="15" rx="2" />
+    <rect x="51.5" y="36" width="20" height="15" rx="2" />
+    <rect x="74.5" y="36" width="20" height="15" rx="2" />
+  </g>
+  <rect x="74.5" y="18" width="20" height="15" rx="2" fill="var(--logo-accent, #00ADD8)" />
+</svg>

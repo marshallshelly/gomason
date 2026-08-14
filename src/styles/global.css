@@ -1,0 +1,243 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Display: characterful serif with Roman inscriptional lineage — letterforms cut in stone. */
+@import "@fontsource-variable/fraunces";
+/* Body + code: IBM Plex, designed as one engineering-minded family. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: 'Fraunces Variable', Georgia, serif;
+    --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+    /* Brand colors — the masonry palette. These flip with the theme. */
+    --color-stone: var(--stone);
+    --color-mortar: var(--mortar);
+    --color-limestone: var(--stone);
+    --color-cyan: var(--brand-cyan);
+
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light — quarried limestone on paper. */
+:root {
+    --radius: 0.5rem;
+
+    /* The built-in CSS easings are too weak to read as intentional. */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+    --stone: oklch(0.5114 0.0275 79.57);        /* #6F6555 — mark + stone accents */
+    --mortar: oklch(0.5219 0.0273 79.58);       /* #726858 — 4.99:1 on paper */
+    --brand-cyan: oklch(0.5122 0.0951 222.67);  /* #00728E — Go cyan deepened for the light ground */
+    --logo-accent: oklch(0.5122 0.0951 222.67);
+
+    --background: oklch(0.9678 0.0086 84.57);   /* #F7F4EE paper */
+    --foreground: oklch(0.2063 0.0107 80.55);   /* #1A1712 ink */
+    --card: oklch(0.9942 0.0069 88.64);
+    --card-foreground: oklch(0.2063 0.0107 80.55);
+    --popover: oklch(0.9942 0.0069 88.64);
+    --popover-foreground: oklch(0.2063 0.0107 80.55);
+    --primary: oklch(0.5122 0.0951 222.67);
+    --primary-foreground: oklch(0.9942 0.0069 88.64);
+    --secondary: oklch(0.9322 0.0144 84.58);
+    --secondary-foreground: oklch(0.2063 0.0107 80.55);
+    --muted: oklch(0.9322 0.0144 84.58);
+    --muted-foreground: oklch(0.5219 0.0273 79.58);
+    --accent: oklch(0.9318 0.0155 222.69);
+    --accent-foreground: oklch(0.2063 0.0107 80.55);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.8809 0.0204 84.59);
+    --input: oklch(0.8809 0.0204 84.59);
+    --ring: oklch(0.5122 0.0951 222.67);
+    --chart-1: oklch(0.5122 0.0951 222.67);
+    --chart-2: oklch(0.5114 0.0275 79.57);
+    --chart-3: oklch(0.6050 0.0227 74.52);
+    --chart-4: oklch(0.8006 0.0312 78.74);
+    --chart-5: oklch(0.2837 0.0159 79.55);
+    --sidebar: oklch(0.9322 0.0144 84.58);
+    --sidebar-foreground: oklch(0.2063 0.0107 80.55);
+    --sidebar-primary: oklch(0.5122 0.0951 222.67);
+    --sidebar-primary-foreground: oklch(0.9942 0.0069 88.64);
+    --sidebar-accent: oklch(0.9318 0.0155 222.69);
+    --sidebar-accent-foreground: oklch(0.2063 0.0107 80.55);
+    --sidebar-border: oklch(0.8809 0.0204 84.59);
+    --sidebar-ring: oklch(0.5122 0.0951 222.67);
+}
+
+/* Dark — the quarry at night. */
+.dark {
+    --stone: oklch(0.8006 0.0312 78.74);        /* #C9BCA8 limestone */
+    --mortar: oklch(0.6050 0.0227 74.52);       /* #8A8073 */
+    --brand-cyan: oklch(0.6945 0.1303 223.85);  /* #00ADD8 Go cyan */
+    --logo-accent: oklch(0.6945 0.1303 223.85);
+
+    --background: oklch(0.1831 0.0085 84.57);   /* #14120E basalt */
+    --foreground: oklch(0.9357 0.0161 82.79);   /* #EFE9DE chalk */
+    --card: oklch(0.2194 0.0105 80.57);         /* #1D1A15 slate */
+    --card-foreground: oklch(0.9357 0.0161 82.79);
+    --popover: oklch(0.2194 0.0105 80.57);
+    --popover-foreground: oklch(0.9357 0.0161 82.79);
+    --primary: oklch(0.6945 0.1303 223.85);
+    --primary-foreground: oklch(0.1831 0.0085 84.57);
+    --secondary: oklch(0.2837 0.0159 79.55);
+    --secondary-foreground: oklch(0.9357 0.0161 82.79);
+    --muted: oklch(0.2837 0.0159 79.55);        /* #2E2921 edge */
+    --muted-foreground: oklch(0.6050 0.0227 74.52);
+    --accent: oklch(0.3063 0.0226 224.53);
+    --accent-foreground: oklch(0.9357 0.0161 82.79);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(0.2837 0.0159 79.55);
+    --input: oklch(0.2837 0.0159 79.55);
+    --ring: oklch(0.6945 0.1303 223.85);
+    --chart-1: oklch(0.6945 0.1303 223.85);
+    --chart-2: oklch(0.8006 0.0312 78.74);
+    --chart-3: oklch(0.6050 0.0227 74.52);
+    --chart-4: oklch(0.8854 0.0266 82.38);
+    --chart-5: oklch(0.2837 0.0159 79.55);
+    --sidebar: oklch(0.2194 0.0105 80.57);
+    --sidebar-foreground: oklch(0.9357 0.0161 82.79);
+    --sidebar-primary: oklch(0.6945 0.1303 223.85);
+    --sidebar-primary-foreground: oklch(0.1831 0.0085 84.57);
+    --sidebar-accent: oklch(0.3063 0.0226 224.53);
+    --sidebar-accent-foreground: oklch(0.9357 0.0161 82.79);
+    --sidebar-border: oklch(0.2837 0.0159 79.55);
+    --sidebar-ring: oklch(0.6945 0.1303 223.85);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1, h2, h3 {
+    @apply font-heading;
+    font-variation-settings: "SOFT" 0, "WONK" 1;
+    text-wrap: balance;
+  }
+  code, pre, kbd {
+    @apply font-mono;
+  }
+}
+
+/* ── Curriculum interactions ─────────────────────────────────────────────
+   Frequency governs everything here. Ticking a course off happens ~15 times
+   over the whole course, so it earns a real moment. Hovering a row happens
+   constantly, so it stays a cheap colour change. */
+
+/* The tick box. Presses must feel heard, so it scales on :active. */
+.tick {
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+}
+.tick:active {
+  transform: scale(0.94);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tick:hover {
+    border-color: var(--brand-cyan);
+  }
+}
+
+/* The mark itself. Nothing in the real world appears from nothing, so this
+   starts at 0.8 rather than 0 — and exits faster than it enters. */
+.tick-mark {
+  transition:
+    opacity 100ms var(--ease-out),
+    transform 100ms var(--ease-out);
+  opacity: 0;
+  transform: scale(0.8);
+}
+.tick[data-done="true"] .tick-mark {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: 180ms;
+}
+
+/* Progress fill: scaleX, never width — width triggers layout every frame. */
+.progress-fill {
+  transform-origin: left center;
+  transition: transform 450ms var(--ease-out);
+  will-change: transform;
+}
+
+/* Completed rows recede rather than vanish. */
+.lesson-row {
+  transition: opacity 220ms var(--ease-out);
+}
+
+/* Entrance stagger, capped so the last row is not left waiting. */
+@media (prefers-reduced-motion: no-preference) {
+  .lesson-row {
+    opacity: 0;
+    animation: lesson-in 380ms var(--ease-out) forwards;
+    animation-delay: var(--stagger, 0ms);
+  }
+  @keyframes lesson-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tick, .tick-mark, .progress-fill, .lesson-row {
+    transition-duration: 1ms;
+    animation: none;
+    opacity: 1;
+  }
+  .tick:active { transform: none; }
+}

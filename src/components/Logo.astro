@@ -1,0 +1,30 @@
+---
+import Mark from "../assets/logo.svg";
+
+interface Props {
+  /** Size of the mark in pixels. */
+  size?: number;
+  /** Render the "GoMason" wordmark beside the mark. */
+  wordmark?: boolean;
+  class?: string;
+}
+
+const { size = 32, wordmark = false, class: className } = Astro.props;
+---
+
+<span class:list={["inline-flex items-center gap-2.5", className]}>
+  <Mark
+    width={size}
+    height={size}
+    class="text-limestone shrink-0"
+    role="img"
+    aria-label="GoMason"
+  />
+  {
+    wordmark && (
+      <span class="font-heading text-[1.35rem] leading-none tracking-tight">
+        Go<span class="text-mortar">Mason</span>
+      </span>
+    )
+  }
+</span>

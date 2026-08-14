@@ -1,0 +1,44 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Logo from "../components/Logo.astro";
+---
+
+<Layout
+  title="Not found — GoMason"
+  description="That page does not exist."
+>
+  <div class="mx-auto flex min-h-dvh max-w-3xl flex-col px-6">
+    <header class="py-6">
+      <a href="/" class="inline-block transition-opacity hover:opacity-80">
+        <Logo size={26} wordmark />
+      </a>
+    </header>
+
+    <main class="flex flex-1 flex-col justify-center pb-24">
+      <p class="font-mono text-xs uppercase tracking-[0.16em] text-cyan">
+        404
+      </p>
+      <h1 class="mt-4 text-4xl tracking-tight sm:text-5xl">
+        Nothing laid here yet.
+      </h1>
+      <p class="mt-4 max-w-[55ch] text-lg text-muted-foreground">
+        That page does not exist. It may have been renamed, or it may be a course
+        that has not been written yet.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a
+          href="/#curriculum"
+          class="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          See all courses
+        </a>
+        <a
+          href="/"
+          class="rounded-md border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          Back to the start
+        </a>
+      </div>
+    </main>
+  </div>
+</Layout>

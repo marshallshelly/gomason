@@ -121,38 +121,43 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
                 return (
                   <li
                     key={lesson.id}
-                    className="lesson-row border-t border-border last:border-b"
+                    className="lesson-row grid grid-cols-[22px_2.25rem_1fr] items-start gap-x-3 border-t border-border py-5 last:border-b"
                     style={{ ["--stagger" as string]: `${Math.min(i * 35, 350)}ms` }}
                   >
+                    {/* Separate controls: the tick records progress, the title
+                        opens the course. Nesting them would be invalid HTML. */}
                     <button
                       type="button"
                       role="checkbox"
                       aria-checked={isDone}
-                      aria-label={`${lesson.title} — mark as ${isDone ? "not done" : "done"}`}
+                      aria-label={`Mark "${lesson.title}" as ${isDone ? "not done" : "done"}`}
                       onClick={() => onToggle?.(lesson.id, isDone)}
-                      className="grid w-full grid-cols-[22px_2.25rem_1fr] items-start gap-x-3 py-5 text-left"
+                      className="contents"
                     >
                       <Tick done={isDone} />
-                      <span className="pt-0.5 font-mono text-sm tabular-nums text-cyan">
-                        {String(lesson.order).padStart(2, "0")}
-                      </span>
-                      <span className={isDone ? "opacity-55" : undefined}>
-                        <span className="flex flex-wrap items-baseline gap-x-3">
-                          <span className="font-heading text-lg tracking-tight">
-                            {lesson.title}
-                          </span>
-                          <span className="font-mono text-[11px] tabular-nums text-mortar">
-                            {lesson.minutes} min
-                          </span>
-                        </span>
-                        <span className="mt-1 block text-sm text-muted-foreground">
-                          {lesson.summary}
-                        </span>
-                        <span className="mt-2 block font-mono text-[11px] uppercase tracking-[0.12em] text-mortar">
-                          {lesson.topics.join(" · ")}
-                        </span>
-                      </span>
                     </button>
+                    <span className="pt-0.5 font-mono text-sm tabular-nums text-cyan">
+                      {String(lesson.order).padStart(2, "0")}
+                    </span>
+                    <a
+                      href={`/courses/${lesson.id}`}
+                      className={`lesson-link ${isDone ? "opacity-55" : ""}`}
+                    >
+                      <span className="flex flex-wrap items-baseline gap-x-3">
+                        <span className="font-heading text-lg tracking-tight">
+                          {lesson.title}
+                        </span>
+                        <span className="font-mono text-[11px] tabular-nums text-mortar">
+                          {lesson.minutes} min
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-sm text-muted-foreground">
+                        {lesson.summary}
+                      </span>
+                      <span className="mt-2 block font-mono text-[11px] uppercase tracking-[0.12em] text-mortar">
+                        {lesson.topics.join(" · ")}
+                      </span>
+                    </a>
                   </li>
                 );
               })}

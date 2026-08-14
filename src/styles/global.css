@@ -241,3 +241,150 @@
   }
   .tick:active { transform: none; }
 }
+
+/* ── Lesson prose ────────────────────────────────────────────────────────
+   The reading surface for the whole course, so measure and rhythm matter
+   more here than anywhere else. Body copy holds ~68 characters; code and
+   tables are allowed to run wider and scroll on their own. */
+
+.prose {
+  --measure: 68ch;
+  color: var(--foreground);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+.prose > * { max-width: var(--measure); }
+
+.prose h2,
+.prose h3 {
+  font-family: var(--font-heading);
+  font-variation-settings: "SOFT" 0, "WONK" 1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  scroll-margin-top: 2rem;
+}
+.prose h2 { font-size: 1.85rem; margin: 3rem 0 1rem; }
+.prose h3 { font-size: 1.35rem; margin: 2.25rem 0 0.75rem; }
+.prose p  { margin: 1.15rem 0; }
+.prose strong { font-weight: 600; }
+
+.prose a {
+  color: var(--brand-cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .prose a:hover { text-decoration-thickness: 2px; }
+}
+
+.prose ul, .prose ol { margin: 1.15rem 0; padding-left: 1.35rem; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li { margin: 0.4rem 0; }
+.prose li::marker { color: var(--mortar); }
+
+/* Inline code sits inside a sentence, so it must not shout. */
+.prose :not(pre) > code {
+  font-size: 0.875em;
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 0.14em 0.36em;
+}
+
+.prose pre {
+  margin: 1.5rem 0;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card) !important;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  max-width: 100%;
+}
+
+/* Shiki emits both palettes as variables; pick one per theme. */
+.astro-code, .astro-code span { color: var(--shiki-light); }
+.dark .astro-code, .dark .astro-code span { color: var(--shiki-dark); }
+
+.prose blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1.15rem;
+  border-left: 2px solid var(--brand-cyan);
+  color: var(--muted-foreground);
+}
+
+.prose table {
+  width: 100%;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.prose th, .prose td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 0.9rem 0.6rem 0;
+  text-align: left;
+  vertical-align: top;
+}
+.prose th {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mortar);
+}
+
+/* Solutions stay folded until the reader has had a go. */
+.prose details {
+  margin: 1.5rem 0;
+  padding: 0.9rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.prose details > * { max-width: 100%; }
+.prose summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mortar);
+}
+@media (hover: hover) and (pointer: fine) {
+  .prose summary:hover { color: var(--foreground); }
+}
+.prose details[open] summary { margin-bottom: 0.5rem; }
+.prose hr { margin: 2.5rem 0; border: 0; border-top: 1px solid var(--border); }
+
+/* Mark-complete button: presses must feel heard, same as the tick. */
+.tick-btn { transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 160ms var(--ease-out); }
+.tick-btn:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .tick-btn:active { transform: none; } }
+
+/* Lesson title links stay quiet until hovered — the row is scanned, not read. */
+.lesson-link { display: block; }
+@media (hover: hover) and (pointer: fine) {
+  .lesson-link:hover .font-heading { color: var(--brand-cyan); }
+}
+.lesson-link .font-heading { transition: color 140ms var(--ease-out); }
+
+/* Terminal output is not something you type, so it must not look like it.
+   `text` blocks read as results: quieter, no card lift, dimmer ink. */
+.prose pre[data-language="text"] {
+  background: var(--muted) !important;
+  border-color: transparent;
+  opacity: 0.9;
+}
+.prose pre[data-language="text"] code { font-size: 0.83rem; }
+
+/* Output that directly follows a command visually hangs off it, so the
+   pairing is obvious without a caption. */
+.prose pre + pre[data-language="text"] {
+  margin-top: -1.15rem;
+  border-top: 1px dashed var(--border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}

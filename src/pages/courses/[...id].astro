@@ -1,0 +1,127 @@
+---
+import { getCollection, render } from "astro:content";
+import Layout from "../../layouts/Layout.astro";
+import Logo from "../../components/Logo.astro";
+import MarkComplete from "../../components/MarkComplete.tsx";
+import { PARTS } from "../../content.config";
+
+export async function getStaticPaths() {
+  const lessons = (await getCollection("lessons")).sort(
+    (a, b) => a.data.order - b.data.order,
+  );
+
+  return lessons.map((lesson, i) => ({
+    params: { id: lesson.id },
+    props: {
+      lesson,
+      prev: lessons[i - 1] ?? null,
+      next: lessons[i + 1] ?? null,
+    },
+  }));
+}
+
+const { lesson, prev, next } = Astro.props;
+const { Content } = await render(lesson);
+const part = PARTS.find((p) => p.id === lesson.data.part);
+---
+
+<Layout
+  title={`${lesson.data.title} — GoMason`}
+  description={lesson.data.summary}
+>
+  <div class="mx-auto max-w-3xl px-6">
+    <header class="flex items-center justify-between py-6">
+      <a href="/" class="transition-opacity hover:opacity-80">
+        <Logo size={26} wordmark />
+      </a>
+      <a
+        href="/#curriculum"
+        class="text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >All courses</a
+      >
+    </header>
+
+    <main class="pb-20">
+      <div class="border-t border-border pt-10">
+        <p class="font-mono text-xs uppercase tracking-[0.16em] text-cyan">
+          {part?.title} &middot; Course {String(lesson.data.order).padStart(2, "0")}
+        </p>
+        <h1 class="mt-4 text-4xl leading-tight tracking-tight sm:text-5xl">
+          {lesson.data.title}
+        </h1>
+        <p class="mt-4 max-w-[60ch] text-lg text-muted-foreground">
+          {lesson.data.summary}
+        </p>
+        <p class="mt-5 font-mono text-[11px] uppercase tracking-[0.12em] text-mortar">
+          {lesson.data.minutes} min &middot; {lesson.data.topics.join(" · ")}
+        </p>
+      </div>
+
+      {
+        lesson.data.draft ? (
+          <div class="mt-10 rounded-lg border border-border bg-card p-6">
+            <p class="font-mono text-xs uppercase tracking-[0.14em] text-mortar">
+              Not written yet
+            </p>
+            <p class="mt-3 text-muted-foreground">
+              This course is outlined but unwritten. The summary above is the
+              contract: when it ships, it ends with working, tested code.
+            </p>
+          </div>
+        ) : (
+          <article class="prose mt-10">
+            <Content />
+          </article>
+        )
+      }
+
+      {
+        !lesson.data.draft && (
+          <div class="mt-12 border-t border-border pt-8">
+            <MarkComplete client:load lessonId={lesson.id} />
+          </div>
+        )
+      }
+
+      <nav class="mt-12 grid gap-3 border-t border-border pt-8 sm:grid-cols-2">
+        {
+          prev ? (
+            <a
+              href={`/courses/${prev.id}`}
+              class="group rounded-lg border border-border p-4 transition-colors hover:bg-muted"
+            >
+              <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-mortar">
+                ← Course {String(prev.data.order).padStart(2, "0")}
+              </span>
+              <span class="mt-1.5 block font-heading text-lg tracking-tight">
+                {prev.data.title}
+              </span>
+            </a>
+          ) : (
+            <span />
+          )
+        }
+        {
+          next && (
+            <a
+              href={`/courses/${next.id}`}
+              class="group rounded-lg border border-border p-4 text-right transition-colors hover:bg-muted sm:col-start-2"
+            >
+              <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-mortar">
+                Course {String(next.data.order).padStart(2, "0")} →
+              </span>
+              <span class="mt-1.5 block font-heading text-lg tracking-tight">
+                {next.data.title}
+              </span>
+            </a>
+          )
+        }
+      </nav>
+    </main>
+
+    <footer class="flex flex-wrap items-center justify-between gap-4 border-t border-border py-8 text-sm text-muted-foreground">
+      <Logo size={20} />
+      <p>Built in the open. MIT licensed.</p>
+    </footer>
+  </div>
+</Layout>

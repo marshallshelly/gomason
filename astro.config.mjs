@@ -6,13 +6,17 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 
-// Canonical URLs and the sitemap are built from this. Cloudflare sets
-// CF_PAGES_URL on every build; SITE_URL overrides it if a custom domain
-// is ever added. The literal is the production fallback.
+// Canonical URLs, the sitemap, robots.txt and the OG image URL are all
+// built from this, so a wrong value ships silently broken SEO.
+//
+// Set SITE_URL in the build environment to override — that is the only
+// thing to change if the site moves to a custom domain or to Pages.
+// CF_PAGES_URL is set by Pages builds but NOT by Workers builds, which is
+// why the literal below must match wherever this actually deploys.
 const SITE =
   process.env.SITE_URL ??
   process.env.CF_PAGES_URL ??
-  "https://gomason.pages.dev";
+  "https://gomason.marshallshelly97.workers.dev";
 
 // Unwritten courses are noindex, so they must not appear in the sitemap
 // either — a sitemap should only ever list canonical, indexable URLs.

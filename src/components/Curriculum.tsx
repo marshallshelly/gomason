@@ -10,6 +10,7 @@ export type Lesson = {
   summary: string;
   topics: string[];
   minutes: number;
+  draft: boolean;
 };
 
 export type Part = { id: string; title: string; blurb: string };
@@ -47,9 +48,13 @@ function Tick({ done }: { done: boolean }) {
 }
 
 function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) {
-  const total = lessons.length;
-  const completed = lessons.filter((l) => done.has(l.id)).length;
-  const remaining = lessons
+  const available = lessons.filter((l) => !l.draft);
+  const upcoming = lessons.length - available.length;
+
+  const completed = available.filter((l) => done.has(l.id)).length;
+  const caughtUp = available.length > 0 && completed === available.length;
+
+  const remaining = available
     .filter((l) => !done.has(l.id))
     .reduce((sum, l) => sum + l.minutes, 0);
   const hours = Math.round((remaining / 60) * 10) / 10;
@@ -60,13 +65,17 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="font-mono text-xs uppercase tracking-[0.16em] text-mortar">
             {completed === 0
-              ? `${total} courses to lay`
-              : completed === total
-                ? "Wall complete"
-                : `${completed} of ${total} courses laid`}
+              ? `${available.length} courses ready`
+              : caughtUp
+                ? "You are up to date"
+                : `${completed} of ${available.length} laid`}
           </p>
           <p className="font-mono text-xs tabular-nums text-mortar">
-            {remaining === 0 ? "nothing left to build" : `~${hours}h remaining`}
+            {caughtUp
+              ? upcoming > 0
+                ? `${upcoming} more being written`
+                : "nothing left to build"
+              : `~${hours}h to go`}
           </p>
         </div>
 
@@ -75,12 +84,14 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
           role="progressbar"
           aria-valuenow={completed}
           aria-valuemin={0}
-          aria-valuemax={total}
-          aria-label="Course progress"
+          aria-valuemax={available.length}
+          aria-label="Progress through the published courses"
         >
           <div
             className="progress-fill h-full w-full rounded-full bg-primary"
-            style={{ transform: `scaleX(${total ? completed / total : 0})` }}
+            style={{
+              transform: `scaleX(${available.length ? completed / available.length : 0})`,
+            }}
           />
         </div>
 
@@ -98,14 +109,17 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
       {parts.map((part) => {
         const items = lessons.filter((l) => l.part === part.id);
         if (!items.length) return null;
-        const partDone = items.filter((l) => done.has(l.id)).length;
+        const partAvailable = items.filter((l) => !l.draft);
+        const partDone = partAvailable.filter((l) => done.has(l.id)).length;
 
         return (
           <section key={part.id} className="mt-14">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <h3 className="text-2xl tracking-tight">{part.title}</h3>
               <span className="font-mono text-xs tabular-nums text-mortar">
-                {partDone}/{items.length}
+                {partAvailable.length === 0
+                  ? `${items.length} being written`
+                  : `${partDone}/${partAvailable.length}`}
               </span>
             </div>
             <p className="mt-2 max-w-[60ch] text-sm text-muted-foreground">{part.blurb}</p>
@@ -116,19 +130,26 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
                 return (
                   <li
                     key={lesson.id}
+                    data-draft={lesson.draft}
                     className="lesson-row grid grid-cols-[22px_2.25rem_1fr] items-start gap-x-3 border-t border-border py-5 last:border-b"
                     style={{ ["--stagger" as string]: `${Math.min(i * 35, 350)}ms` }}
                   >
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={isDone}
-                      aria-label={`Mark "${lesson.title}" as ${isDone ? "not done" : "done"}`}
-                      onClick={() => onToggle?.(lesson.id, isDone)}
-                      className="contents"
-                    >
-                      <Tick done={isDone} />
-                    </button>
+                    {lesson.draft ? (
+                      <span className="mt-0.5 grid size-[22px] place-items-center" aria-hidden="true">
+                        <span className="size-1.5 rounded-full bg-border" />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={isDone}
+                        aria-label={`Mark "${lesson.title}" as ${isDone ? "not done" : "done"}`}
+                        onClick={() => onToggle?.(lesson.id, isDone)}
+                        className="contents"
+                      >
+                        <Tick done={isDone} />
+                      </button>
+                    )}
                     <span className="pt-0.5 font-mono text-sm tabular-nums text-cyan">
                       {String(lesson.order).padStart(2, "0")}
                     </span>
@@ -143,6 +164,11 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
                         <span className="font-mono text-[11px] tabular-nums text-mortar">
                           {lesson.minutes} min
                         </span>
+                        {lesson.draft && (
+                          <span className="rounded-full border border-border px-1.5 py-px font-mono text-[10px] uppercase tracking-[0.12em] text-mortar">
+                            being written
+                          </span>
+                        )}
                       </span>
                       <span className="mt-1 block text-sm text-muted-foreground">
                         {lesson.summary}

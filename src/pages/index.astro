@@ -10,7 +10,9 @@ const lessons = (await getCollection("lessons"))
   .map((entry) => ({ id: entry.id, ...entry.data }))
   .sort((a, b) => a.order - b.order);
 
-const totalHours = Math.round((lessons.reduce((s, l) => s + l.minutes, 0) / 60) * 10) / 10;
+const published = lessons.filter((l) => !l.draft);
+const readyHours = Math.round((published.reduce((s, l) => s + l.minutes, 0) / 60) * 10) / 10;
+const upcoming = lessons.length - published.length;
 
 const site = Astro.site ?? new URL("/", Astro.url);
 const totalMinutes = lessons.reduce((s, l) => s + l.minutes, 0);
@@ -123,9 +125,11 @@ users, err := builder.Select[User](qb).
       <section id="curriculum" class="pb-24 scroll-mt-8">
         <h2 class="text-3xl tracking-tight">The courses</h2>
         <p class="mt-3 max-w-[60ch] text-muted-foreground">
-          {lessons.length} courses, roughly {totalHours} hours of building. It starts
-          at <code class="text-foreground">go mod init</code> — no Go experience assumed —
-          and every language feature arrives just before the chapter that needs it.
+          <strong class="font-medium text-foreground"
+            >{published.length} courses are ready now — about {readyHours} hours.</strong
+          > They start at <code class="text-foreground">go mod init</code>, assume no Go
+          experience, and every language feature arrives just before the chapter that
+          needs it. {upcoming} more are being written.
         </p>
         <p class="mt-3 max-w-[60ch] text-sm text-mortar">
           Tick one off as you finish it. Progress is stored in your browser, so

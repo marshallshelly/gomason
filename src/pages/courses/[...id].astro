@@ -23,12 +23,67 @@ export async function getStaticPaths() {
 const { lesson, prev, next } = Astro.props;
 const { Content } = await render(lesson);
 const part = PARTS.find((p) => p.id === lesson.data.part);
+
+const site = Astro.site ?? new URL("/", Astro.url);
+const pageUrl = new URL(Astro.url.pathname, site).href;
+
+// A single lesson is part of a course, not a course in itself — so
+// LearningResource, with isPartOf pointing at the Course on the homepage.
+const learningResource = {
+  "@context": "https://schema.org",
+  "@type": "LearningResource",
+  name: lesson.data.title,
+  description: lesson.data.summary,
+  url: pageUrl,
+  inLanguage: "en",
+  isAccessibleForFree: true,
+  learningResourceType: "Lesson",
+  educationalLevel: "Beginner",
+  timeRequired: `PT${lesson.data.minutes}M`,
+  teaches: lesson.data.topics,
+  position: lesson.data.order,
+  isPartOf: {
+    "@type": "Course",
+    name: "GoMason — Learn Go by building an ORM",
+    url: site.href,
+  },
+};
+
+const breadcrumbs = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "GoMason", item: site.href },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: part?.title ?? "Courses",
+      item: new URL("/#curriculum", site).href,
+    },
+    { "@type": "ListItem", position: 3, name: lesson.data.title, item: pageUrl },
+  ],
+};
 ---
 
 <Layout
   title={`${lesson.data.title} — GoMason`}
   description={lesson.data.summary}
+  ogType="article"
+  noindex={lesson.data.draft}
 >
+  <Fragment slot="head">
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify(learningResource)}
+    />
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify(breadcrumbs)}
+    />
+  </Fragment>
+
   <div class="mx-auto max-w-3xl px-6">
     <header class="flex items-center justify-between py-6">
       <a href="/" class="transition-opacity hover:opacity-80">

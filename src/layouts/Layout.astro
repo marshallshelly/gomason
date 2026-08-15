@@ -4,14 +4,21 @@ import "../styles/global.css";
 interface Props {
   title?: string;
   description?: string;
+  /** "article" for course pages, "website" elsewhere. */
+  ogType?: "website" | "article";
+  /** Keep unwritten courses out of the index without hiding them from readers. */
+  noindex?: boolean;
 }
 
 const {
   title = "GoMason — Learn Go by building an ORM",
   description = "A free, open source course. Learn Go from fundamentals to advanced by building a working PostgreSQL ORM, one course of stone at a time.",
+  ogType = "website",
+  noindex = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url);
+const ogImage = new URL("/og.png", Astro.site ?? Astro.url);
 ---
 
 <!doctype html>
@@ -25,10 +32,27 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url);
 
     <title>{title}</title>
     <meta name="description" content={description} />
+
+    {
+      /* follow, so an unwritten course still passes link equity through to
+         the courses that are written. */
+      noindex && <meta name="robots" content="noindex,follow" />
+    }
+
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="GoMason" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="GoMason — learn Go by building an ORM" />
+
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
 
     <script is:inline>
       // Set the theme before first paint so there is no flash.
@@ -38,6 +62,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url);
         (!stored && matchMedia("(prefers-color-scheme: dark)").matches);
       document.documentElement.classList.toggle("dark", dark);
     </script>
+
+    <slot name="head" />
   </head>
   <body class="min-h-dvh antialiased">
     <slot />

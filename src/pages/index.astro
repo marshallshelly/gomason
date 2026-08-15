@@ -10,9 +10,51 @@ const lessons = (await getCollection("lessons"))
   .sort((a, b) => a.order - b.order);
 
 const totalHours = Math.round((lessons.reduce((s, l) => s + l.minutes, 0) / 60) * 10) / 10;
+
+const site = Astro.site ?? new URL("/", Astro.url);
+const totalMinutes = lessons.reduce((s, l) => s + l.minutes, 0);
+
+const course = {
+  "@context": "https://schema.org",
+  "@type": "Course",
+  name: "GoMason — Learn Go by building an ORM",
+  description:
+    "A free, open source course that teaches Go from fundamentals to advanced by building a working PostgreSQL ORM.",
+  url: site.href,
+  inLanguage: "en",
+  isAccessibleForFree: true,
+  educationalLevel: "Beginner",
+  teaches: [...new Set(lessons.flatMap((l) => l.topics))],
+  provider: {
+    "@type": "Organization",
+    name: "GoMason",
+    url: site.href,
+  },
+  hasCourseInstance: {
+    "@type": "CourseInstance",
+    courseMode: "online",
+    courseWorkload: `PT${totalMinutes}M`,
+  },
+  syllabusSections: lessons.map((l) => ({
+    "@type": "Syllabus",
+    name: l.title,
+    description: l.summary,
+    position: l.order,
+    timeRequired: `PT${l.minutes}M`,
+    url: new URL(`/courses/${l.id}/`, site).href,
+  })),
+};
 ---
 
 <Layout>
+  <Fragment slot="head">
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify(course)}
+    />
+  </Fragment>
+
   <div class="mx-auto max-w-5xl px-6">
     <header class="flex items-center justify-between py-6">
       <Logo size={30} wordmark />

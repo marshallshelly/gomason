@@ -9,14 +9,24 @@ import sitemap from "@astrojs/sitemap";
 // Canonical URLs, the sitemap, robots.txt and the OG image URL are all
 // built from this, so a wrong value ships silently broken SEO.
 //
-// Set SITE_URL in the build environment to override — that is the only
-// thing to change if the site moves to a custom domain or to Pages.
-// CF_PAGES_URL is set by Pages builds but NOT by Workers builds, which is
-// why the literal below must match wherever this actually deploys.
+// Resolution order:
+//   SITE_URL                       - explicit override, e.g. a custom domain
+//   VERCEL_PROJECT_PRODUCTION_URL  - stable production domain, set by Vercel.
+//                                    Deliberately not VERCEL_URL, which is a
+//                                    per-deployment hostname; preview builds
+//                                    should canonicalise to production, not
+//                                    to themselves.
+//   CF_PAGES_URL                   - set by Cloudflare Pages builds only.
+// The literal is the last resort, used by local builds.
+const fromVercel = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : undefined;
+
 const SITE =
   process.env.SITE_URL ??
+  fromVercel ??
   process.env.CF_PAGES_URL ??
-  "https://gomason.marshallshelly97.workers.dev";
+  "https://gomason.vercel.app";
 
 // Unwritten courses are noindex, so they must not appear in the sitemap
 // either — a sitemap should only ever list canonical, indexable URLs.

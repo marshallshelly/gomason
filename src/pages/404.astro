@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Logo from "../components/Logo.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
 ---
 
 <Layout
@@ -8,10 +9,11 @@ import Logo from "../components/Logo.astro";
   description="That page does not exist."
 >
   <div class="mx-auto flex min-h-dvh max-w-3xl flex-col px-6">
-    <header class="py-6">
+    <header class="flex items-center justify-between py-6">
       <a href="/" class="inline-block transition-opacity hover:opacity-80">
         <Logo size={26} wordmark />
       </a>
+      <ThemeToggle />
     </header>
 
     <main class="flex flex-1 flex-col justify-center pb-24">

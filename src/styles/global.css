@@ -396,3 +396,32 @@
   .copy-btn { transition-duration: 1ms; }
   .copy-btn:active { transform: none; }
 }
+
+.theme-toggle {
+  transition:
+    color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out),
+    background-color 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.theme-toggle:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) {
+  .theme-toggle:hover { color: var(--foreground); background: var(--muted); }
+}
+
+.theme-toggle > svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 150ms var(--ease-out),
+    transform 150ms var(--ease-out);
+}
+.icon-sun  { opacity: 0; transform: scale(0.7) rotate(-25deg); }
+.icon-moon { opacity: 1; transform: none; }
+.dark .icon-moon { opacity: 0; transform: scale(0.7) rotate(25deg); }
+.dark .icon-sun  { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle, .theme-toggle > svg { transition-duration: 1ms; }
+  .theme-toggle:active { transform: none; }
+  .icon-sun, .icon-moon, .dark .icon-sun, .dark .icon-moon { transform: none; }
+}

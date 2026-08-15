@@ -3,6 +3,7 @@ import { getCollection } from "astro:content";
 import Layout from "../layouts/Layout.astro";
 import Logo from "../components/Logo.astro";
 import Curriculum from "../components/Curriculum.tsx";
+import ThemeToggle from "../components/ThemeToggle.astro";
 import { PARTS } from "../content.config";
 
 const lessons = (await getCollection("lessons"))
@@ -61,14 +62,7 @@ const course = {
       <nav class="flex items-center gap-6 text-sm">
         <a href="#curriculum" class="text-muted-foreground hover:text-foreground transition-colors">Curriculum</a>
         <a href="https://github.com/gomason" class="text-muted-foreground hover:text-foreground transition-colors">GitHub</a>
-        <button
-          id="theme-toggle"
-          type="button"
-          class="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          aria-label="Toggle colour theme"
-        >
-          Theme
-        </button>
+        <ThemeToggle />
       </nav>
     </header>
 
@@ -149,12 +143,4 @@ users, err := builder.Select[User](qb).
       <p>Built in the open. MIT licensed.</p>
     </footer>
   </div>
-
-  <script>
-    const toggle = document.getElementById("theme-toggle");
-    toggle?.addEventListener("click", () => {
-      const isDark = document.documentElement.classList.toggle("dark");
-      localStorage.setItem("gomason-theme", isDark ? "dark" : "light");
-    });
-  </script>
 </Layout>

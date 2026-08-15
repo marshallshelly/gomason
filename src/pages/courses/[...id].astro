@@ -3,6 +3,7 @@ import { getCollection, render } from "astro:content";
 import Layout from "../../layouts/Layout.astro";
 import Logo from "../../components/Logo.astro";
 import MarkComplete from "../../components/MarkComplete.tsx";
+import ThemeToggle from "../../components/ThemeToggle.astro";
 import { PARTS } from "../../content.config";
 
 export async function getStaticPaths() {
@@ -87,11 +88,14 @@ const breadcrumbs = {
       <a href="/" class="transition-opacity hover:opacity-80">
         <Logo size={26} wordmark />
       </a>
-      <a
-        href="/#curriculum"
-        class="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >All courses</a
-      >
+      <nav class="flex items-center gap-4">
+        <a
+          href="/#curriculum"
+          class="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >All courses</a
+        >
+        <ThemeToggle />
+      </nav>
     </header>
 
     <main class="pb-20">

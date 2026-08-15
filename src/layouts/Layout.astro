@@ -4,9 +4,7 @@ import "../styles/global.css";
 interface Props {
   title?: string;
   description?: string;
-  /** "article" for course pages, "website" elsewhere. */
   ogType?: "website" | "article";
-  /** Keep unwritten courses out of the index without hiding them from readers. */
   noindex?: boolean;
 }
 
@@ -34,8 +32,6 @@ const ogImage = new URL("/og.png", Astro.site ?? Astro.url);
     <meta name="description" content={description} />
 
     {
-      /* follow, so an unwritten course still passes link equity through to
-         the courses that are written. */
       noindex && <meta name="robots" content="noindex,follow" />
     }
 
@@ -55,7 +51,6 @@ const ogImage = new URL("/og.png", Astro.site ?? Astro.url);
     <meta name="twitter:image" content={ogImage} />
 
     <script is:inline>
-      // Set the theme before first paint so there is no flash.
       const stored = localStorage.getItem("gomason-theme");
       const dark =
         stored === "dark" ||

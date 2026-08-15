@@ -27,8 +27,6 @@ const part = PARTS.find((p) => p.id === lesson.data.part);
 const site = Astro.site ?? new URL("/", Astro.url);
 const pageUrl = new URL(Astro.url.pathname, site).href;
 
-// A single lesson is part of a course, not a course in itself — so
-// LearningResource, with isPartOf pointing at the Course on the homepage.
 const learningResource = {
   "@context": "https://schema.org",
   "@type": "LearningResource",
@@ -181,8 +179,6 @@ const breadcrumbs = {
   </div>
 
   <script>
-    // Copy buttons are progressive enhancement — no island needed. Output
-    // blocks are skipped: nobody needs to copy what their terminal printed.
     for (const pre of document.querySelectorAll<HTMLPreElement>(".prose pre")) {
       if (pre.dataset.language === "text") continue;
       const source = pre.querySelector("code")?.innerText ?? "";

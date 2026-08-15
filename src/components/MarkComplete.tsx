@@ -47,7 +47,6 @@ function Live({ lessonId }: { lessonId: string }) {
 }
 
 export default function MarkComplete({ lessonId }: { lessonId: string }) {
-  // Same gate as the curriculum island: useLiveQuery has no server snapshot.
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   if (!hydrated) return <Button done={false} />;

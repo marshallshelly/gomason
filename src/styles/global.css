@@ -2,9 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Display: characterful serif with Roman inscriptional lineage — letterforms cut in stone. */
 @import "@fontsource-variable/fraunces";
-/* Body + code: IBM Plex, designed as one engineering-minded family. */
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/500.css";
 @import "@fontsource/ibm-plex-sans/600.css";
@@ -18,7 +16,6 @@
     --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
     --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-    /* Brand colors — the masonry palette. These flip with the theme. */
     --color-stone: var(--stone);
     --color-mortar: var(--mortar);
     --color-limestone: var(--stone);
@@ -64,21 +61,19 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light — quarried limestone on paper. */
 :root {
     --radius: 0.5rem;
 
-    /* The built-in CSS easings are too weak to read as intentional. */
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 
-    --stone: oklch(0.5114 0.0275 79.57);        /* #6F6555 — mark + stone accents */
-    --mortar: oklch(0.5219 0.0273 79.58);       /* #726858 — 4.99:1 on paper */
-    --brand-cyan: oklch(0.5122 0.0951 222.67);  /* #00728E — Go cyan deepened for the light ground */
+    --stone: oklch(0.5114 0.0275 79.57);
+    --mortar: oklch(0.5219 0.0273 79.58);
+    --brand-cyan: oklch(0.5122 0.0951 222.67);
     --logo-accent: oklch(0.5122 0.0951 222.67);
 
-    --background: oklch(0.9678 0.0086 84.57);   /* #F7F4EE paper */
-    --foreground: oklch(0.2063 0.0107 80.55);   /* #1A1712 ink */
+    --background: oklch(0.9678 0.0086 84.57);
+    --foreground: oklch(0.2063 0.0107 80.55);
     --card: oklch(0.9942 0.0069 88.64);
     --card-foreground: oklch(0.2063 0.0107 80.55);
     --popover: oklch(0.9942 0.0069 88.64);
@@ -110,16 +105,15 @@
     --sidebar-ring: oklch(0.5122 0.0951 222.67);
 }
 
-/* Dark — the quarry at night. */
 .dark {
-    --stone: oklch(0.8006 0.0312 78.74);        /* #C9BCA8 limestone */
-    --mortar: oklch(0.6050 0.0227 74.52);       /* #8A8073 */
-    --brand-cyan: oklch(0.6945 0.1303 223.85);  /* #00ADD8 Go cyan */
+    --stone: oklch(0.8006 0.0312 78.74);
+    --mortar: oklch(0.6050 0.0227 74.52);
+    --brand-cyan: oklch(0.6945 0.1303 223.85);
     --logo-accent: oklch(0.6945 0.1303 223.85);
 
-    --background: oklch(0.1831 0.0085 84.57);   /* #14120E basalt */
-    --foreground: oklch(0.9357 0.0161 82.79);   /* #EFE9DE chalk */
-    --card: oklch(0.2194 0.0105 80.57);         /* #1D1A15 slate */
+    --background: oklch(0.1831 0.0085 84.57);
+    --foreground: oklch(0.9357 0.0161 82.79);
+    --card: oklch(0.2194 0.0105 80.57);
     --card-foreground: oklch(0.9357 0.0161 82.79);
     --popover: oklch(0.2194 0.0105 80.57);
     --popover-foreground: oklch(0.9357 0.0161 82.79);
@@ -127,7 +121,7 @@
     --primary-foreground: oklch(0.1831 0.0085 84.57);
     --secondary: oklch(0.2837 0.0159 79.55);
     --secondary-foreground: oklch(0.9357 0.0161 82.79);
-    --muted: oklch(0.2837 0.0159 79.55);        /* #2E2921 edge */
+    --muted: oklch(0.2837 0.0159 79.55);
     --muted-foreground: oklch(0.6050 0.0227 74.52);
     --accent: oklch(0.3063 0.0226 224.53);
     --accent-foreground: oklch(0.9357 0.0161 82.79);
@@ -172,12 +166,6 @@
   }
 }
 
-/* ── Curriculum interactions ─────────────────────────────────────────────
-   Frequency governs everything here. Ticking a course off happens ~15 times
-   over the whole course, so it earns a real moment. Hovering a row happens
-   constantly, so it stays a cheap colour change. */
-
-/* The tick box. Presses must feel heard, so it scales on :active. */
 .tick {
   transition:
     border-color 160ms var(--ease-out),
@@ -193,8 +181,6 @@
   }
 }
 
-/* The mark itself. Nothing in the real world appears from nothing, so this
-   starts at 0.8 rather than 0 — and exits faster than it enters. */
 .tick-mark {
   transition:
     opacity 100ms var(--ease-out),
@@ -208,19 +194,16 @@
   transition-duration: 180ms;
 }
 
-/* Progress fill: scaleX, never width — width triggers layout every frame. */
 .progress-fill {
   transform-origin: left center;
   transition: transform 450ms var(--ease-out);
   will-change: transform;
 }
 
-/* Completed rows recede rather than vanish. */
 .lesson-row {
   transition: opacity 220ms var(--ease-out);
 }
 
-/* Entrance stagger, capped so the last row is not left waiting. */
 @media (prefers-reduced-motion: no-preference) {
   .lesson-row {
     opacity: 0;
@@ -241,11 +224,6 @@
   }
   .tick:active { transform: none; }
 }
-
-/* ── Lesson prose ────────────────────────────────────────────────────────
-   The reading surface for the whole course, so measure and rhythm matter
-   more here than anywhere else. Body copy holds ~68 characters; code and
-   tables are allowed to run wider and scroll on their own. */
 
 .prose {
   --measure: 68ch;
@@ -284,7 +262,6 @@
 .prose li { margin: 0.4rem 0; }
 .prose li::marker { color: var(--mortar); }
 
-/* Inline code sits inside a sentence, so it must not shout. */
 .prose :not(pre) > code {
   font-size: 0.875em;
   background: var(--muted);
@@ -303,12 +280,9 @@
   line-height: 1.7;
   max-width: 100%;
   position: relative;
-  /* Go indents with tabs. Eight is the terminal default and what `cat` shows,
-     so nesting reads unmistakably rather than as a faint nudge. */
   tab-size: 8;
 }
 
-/* Shiki emits both palettes as variables; pick one per theme. */
 .astro-code, .astro-code span { color: var(--shiki-light); }
 .dark .astro-code, .dark .astro-code span { color: var(--shiki-dark); }
 
@@ -340,7 +314,6 @@
   color: var(--mortar);
 }
 
-/* Solutions stay folded until the reader has had a go. */
 .prose details {
   margin: 1.5rem 0;
   padding: 0.9rem 1.15rem;
@@ -363,20 +336,16 @@
 .prose details[open] summary { margin-bottom: 0.5rem; }
 .prose hr { margin: 2.5rem 0; border: 0; border-top: 1px solid var(--border); }
 
-/* Mark-complete button: presses must feel heard, same as the tick. */
 .tick-btn { transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 160ms var(--ease-out); }
 .tick-btn:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) { .tick-btn:active { transform: none; } }
 
-/* Lesson title links stay quiet until hovered — the row is scanned, not read. */
 .lesson-link { display: block; }
 @media (hover: hover) and (pointer: fine) {
   .lesson-link:hover .font-heading { color: var(--brand-cyan); }
 }
 .lesson-link .font-heading { transition: color 140ms var(--ease-out); }
 
-/* Terminal output is not something you type, so it must not look like it.
-   `text` blocks read as results: quieter, no card lift, dimmer ink. */
 .prose pre[data-language="text"] {
   background: var(--muted) !important;
   border-color: transparent;
@@ -384,8 +353,6 @@
 }
 .prose pre[data-language="text"] code { font-size: 0.83rem; }
 
-/* Output that directly follows a command visually hangs off it, so the
-   pairing is obvious without a caption. */
 .prose pre + pre[data-language="text"] {
   margin-top: -1.15rem;
   border-top: 1px dashed var(--border);
@@ -393,8 +360,6 @@
   border-top-right-radius: 0;
 }
 
-/* Copy button. Used occasionally, so it earns a small moment — but it sits
-   inside code the reader is scanning, so it stays out of the way until wanted. */
 .copy-btn {
   position: absolute;
   top: 0.5rem;
@@ -419,8 +384,6 @@
 .copy-btn:active { transform: scale(0.94); }
 .copy-btn[data-done] { color: var(--brand-cyan); border-color: var(--brand-cyan); }
 
-/* Revealed on hover for pointers; always visible on touch, where there is
-   no hover to reveal it with. */
 @media (hover: hover) and (pointer: fine) {
   pre:hover .copy-btn,
   .copy-btn:focus-visible { opacity: 1; }

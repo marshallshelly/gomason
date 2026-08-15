@@ -46,11 +46,6 @@ function Tick({ done }: { done: boolean }) {
   );
 }
 
-/**
- * The whole curriculum, rendered identically on the server and the client.
- * The server pass gets an empty `done` set, so the lesson list is in the
- * static HTML for search engines and for readers without JavaScript.
- */
 function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) {
   const total = lessons.length;
   const completed = lessons.filter((l) => done.has(l.id)).length;
@@ -124,8 +119,6 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
                     className="lesson-row grid grid-cols-[22px_2.25rem_1fr] items-start gap-x-3 border-t border-border py-5 last:border-b"
                     style={{ ["--stagger" as string]: `${Math.min(i * 35, 350)}ms` }}
                   >
-                    {/* Separate controls: the tick records progress, the title
-                        opens the course. Nesting them would be invalid HTML. */}
                     <button
                       type="button"
                       role="checkbox"
@@ -169,10 +162,6 @@ function CurriculumView({ lessons, parts, done, onToggle, onReset }: ViewProps) 
   );
 }
 
-/**
- * Reads live progress. Only ever rendered in the browser — `useLiveQuery`
- * subscribes to a localStorage-backed store, which has no server snapshot.
- */
 function LiveCurriculum({ lessons, parts }: { lessons: Lesson[]; parts: Part[] }) {
   const { data: rows } = useLiveQuery((q) => q.from({ p: progress }));
   const done = new Set((rows ?? []).map((r) => r.id));
@@ -189,8 +178,6 @@ function LiveCurriculum({ lessons, parts }: { lessons: Lesson[]; parts: Part[] }
 }
 
 export default function Curriculum({ lessons, parts }: { lessons: Lesson[]; parts: Part[] }) {
-  // The server and the first client render produce the same tree, so
-  // hydration matches; progress fills in immediately afterwards.
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 

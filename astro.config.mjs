@@ -65,8 +65,7 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
 
-  // Fully prerendered — Cloudflare Pages serves dist/ directly, so no
-  // adapter is needed. Adding one routes prerendering through miniflare,
-  // which currently fails on getStaticPaths.
+  // Fully prerendered: the host serves dist/ as static files, so no
+  // adapter is needed on any platform.
   output: "static",
 });

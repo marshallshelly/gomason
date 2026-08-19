@@ -12,17 +12,11 @@ minutes: 35
 draft: false
 ---
 
-Go has no `null`, no `undefined`, and no constructors. A variable that has been
-declared always holds a usable value, whether or not you gave it one. That single
-decision shapes a lot of what follows — including, eventually, how the ORM
-decides which columns to leave out of an `INSERT`.
+Open a terminal. You will be running code every few minutes in this course, and
+most of it is designed to surprise you — the point is to guess wrong, then find
+out why.
 
-Work in the `greet` module from course 01, or start a fresh one. Everything here
-runs with `go run .`.
-
-## Every type has a zero value
-
-Declare a variable without assigning it and Go fills it in:
+In the `greet` module from course 01, replace `main.go` with this:
 
 ```go
 package main
@@ -37,358 +31,266 @@ type User struct {
 }
 
 func main() {
-	var (
-		i  int
-		f  float64
-		b  bool
-		s  string
-		p  *User
-		sl []string
-		m  map[string]int
-	)
-	fmt.Printf("int      %v\n", i)
-	fmt.Printf("float64  %v\n", f)
-	fmt.Printf("bool     %v\n", b)
-	fmt.Printf("string   %q\n", s)
-	fmt.Printf("*User    %v\n", p)
-	fmt.Printf("[]string %v (nil? %t)\n", sl, sl == nil)
-	fmt.Printf("map      %v (nil? %t)\n", m, m == nil)
-
 	var u User
-	fmt.Printf("\nstruct   %+v\n", u)
+	fmt.Printf("%+v\n", u)
+}
+```
+
+**Before you run it — what does an unassigned `User` print?** Write down your
+guess. Then:
+
+```bash
+go run .
+```
+
+```text
+{Name: Age:0 Admin:false Tags:[]}
+```
+
+No `null`, no `undefined`, no crash. Go has no constructors and no uninitialised
+memory: **every type has a zero value, and a declared variable always holds it.**
+Numbers are `0`, strings are `""`, booleans are `false`, pointers, slices and
+maps are `nil`.
+
+That one decision will come back in course 10, when the ORM has to work out which
+columns to leave out of an `INSERT`.
+
+## Your turn: make it crash
+
+`Tags` printed as `[]`, which looks like an empty slice. Add these two lines to
+`main` and run again:
+
+```go
+fmt.Println("nil?", u.Tags == nil, "len:", len(u.Tags))
+u.Tags = append(u.Tags, "admin")
+fmt.Println(u.Tags)
+```
+
+It works — `append` to a nil slice is fine. Now try the same thing with a map:
+
+```go
+var m map[string]int
+fmt.Println("read:", m["missing"])
+m["id"] = 1
+```
+
+**Predict: which of those two lines fails?**
+
+```text
+read: 0
+panic: assignment to entry in nil map
+```
+
+Reading a nil map is fine and gives you the zero value. *Writing* to one panics.
+This is the single most common Go beginner crash, and the fix is to make the map
+before you use it:
+
+```go
+m := map[string]int{}
+```
+
+The asymmetry is worth holding onto: **a nil slice is usable, a nil map is
+read-only.** You will hit this again in course 08 when reflection hands you a
+struct whose map field was never initialised.
+
+## Strings are bytes
+
+Replace the body of `main` with:
+
+```go
+s := "héllo"
+fmt.Println(len(s))
+```
+
+**Predict the number.** It is a five-character word.
+
+```text
+6
+```
+
+`len` on a string counts **bytes, not characters.** The `é` is two bytes in
+UTF-8. Go source is UTF-8 and strings are just byte slices with a type on top —
+so indexing gives you a byte, not a letter:
+
+```go
+fmt.Println(s[1])          // 195 — half of the é
+fmt.Println(string(s[1]))  // Ã   — nonsense
+```
+
+To walk actual characters, range over the string. Add this and run:
+
+```go
+for i, r := range "hé" {
+	fmt.Printf("index %d rune %q\n", i, r)
 }
 ```
 
 ```text
-int      0
-float64  0
-bool     false
-string   ""
-*User    <nil>
-[]string [] (nil? true)
-map      map[] (nil? true)
-
-struct   {Name: Age:0 Admin:false Tags:[]}
+index 0 rune 'h'
+index 1 rune 'é'
 ```
 
-Numbers are `0`, booleans are `false`, strings are `""`, and anything
-pointer-shaped — pointers, slices, maps, channels, functions, interfaces — is
-`nil`. A struct's zero value is a struct whose every field is *its* zero value,
-all the way down. No constructor ran.
+Ranging yields **runes** — Unicode code points — and the index jumps by however
+many bytes each one took. A `rune` is an `int32`; a `byte` is a `uint8`. Both are
+aliases, and choosing the wrong one is how you end up truncating someone's name.
 
-This is why you see `var buf bytes.Buffer` in real Go and never
-`bytes.NewBuffer()`. A useful zero value is something library authors design for
-deliberately, and you should too.
+**Your turn.** Write a function `CountChars(s string) int` that returns the
+number of *characters*, so `CountChars("héllo")` is 5. Two ways to do it —
+`utf8.RuneCountInString` from the standard library, or a range loop with a
+counter. Try the loop first, then look up the stdlib version and notice you did
+not need to write it.
 
-Note the two `%v` outputs that look like something but are not: an empty slice
-prints as `[]` and an empty map as `map[]`, yet both are `nil`. Printing is not
-a reliable way to tell.
+## The trap under append
 
-## Strings are bytes, not characters
-
-A Go string is an immutable sequence of **bytes**, conventionally UTF-8. It is
-not a sequence of characters, and forgetting that is one of the most common
-sources of wrong code:
+This is the one that bites everybody. Type it exactly:
 
 ```go
-package main
-
-import (
-	"fmt"
-	"unicode/utf8"
-)
-
-func main() {
-	s := "héllo"
-	fmt.Printf("len(%q)                = %d\n", s, len(s))
-	fmt.Printf("utf8.RuneCountInString = %d\n", utf8.RuneCountInString(s))
-	fmt.Printf("s[1]                   = %v (a byte)\n", s[1])
-
-	for i, r := range s {
-		fmt.Printf("  i=%d  r=%q  (%d bytes)\n", i, r, utf8.RuneLen(r))
-	}
-}
+all := []string{"id", "email", "age"}
+first := all[:2]
+first = append(first, "OVERWRITTEN")
+fmt.Println("all:  ", all)
+fmt.Println("first:", first)
 ```
+
+**Predict both lines before you run it.** Most people expect `all` to be
+untouched.
 
 ```text
-len("héllo")                = 6
-utf8.RuneCountInString = 5
-s[1]                   = 195 (a byte)
-  i=0  r='h'  (1 bytes)
-  i=1  r='é'  (2 bytes)
-  i=3  r='l'  (1 bytes)
-  i=4  r='l'  (1 bytes)
-  i=5  r='o'  (1 bytes)
+all:   [id email OVERWRITTEN]
+first: [id email OVERWRITTEN]
 ```
 
-Five characters, six bytes. `é` takes two.
+`append` overwrote `all[2]`. A slice is a **view** — a pointer, a length, and a
+capacity — over an array it does not own. `all[:2]` has length 2 but capacity 3,
+because it still points at the original array with room to spare. `append` saw
+spare capacity and wrote in place.
 
-Three things worth pinning down:
-
-- `len(s)` counts **bytes**. For characters, use `utf8.RuneCountInString`.
-- `s[1]` gives you a **byte** (`195`), not a character. Indexing into a string
-  mid-character produces nonsense.
-- `for i, r := range s` gives you **runes** — but `i` is still a *byte* offset,
-  which is why it jumps from 1 to 3.
-
-A **rune** is Go's name for a Unicode code point. It is an alias for `int32`,
-which is why `%q` prints `'é'` rather than a number.
-
-When you genuinely need to index by character, convert once:
+Check it yourself:
 
 ```go
-r := []rune(s)   // len 5
-b := []byte(s)   // len 6
+fmt.Println(len(first), cap(first))  // 2 3
 ```
 
-That conversion allocates, so do it once rather than in a loop.
-
-## Arrays are values. Slices are not.
-
-An array has a fixed length that is part of its type: `[3]int` and `[4]int` are
-different types. Arrays are **values** — assigning one copies it:
+Compare that to an array, which is a *value*:
 
 ```go
 a := [3]int{1, 2, 3}
 b := a
 b[0] = 99
-fmt.Printf("array  a=%v  b=%v\n", a, b)
+fmt.Println(a, b)
 ```
 
 ```text
-array  a=[1 2 3]  b=[99 2 3]
+[1 2 3] [99 2 3]
 ```
 
-A slice is a small header — a pointer to a backing array, a length, and a
-capacity. Copying a slice copies the *header*, so both copies point at the same
-storage:
+`b := a` copied all three elements. Do the same with a slice and both names see
+the change, because you copied the view and not the data.
+
+**Your turn.** Make `first` independent so that appending to it leaves `all`
+alone. Two fixes: `slices.Clone`, or the three-index slice `all[:2:2]` which caps
+the capacity at 2 and forces `append` to allocate. Try both and print
+`cap(first)` for each.
+
+## Maps do not keep order
+
+Build a map and range over it:
 
 ```go
-x := []int{1, 2, 3}
-y := x
-y[0] = 99
-fmt.Printf("slice  x=%v  y=%v\n", x, y)
+m := map[string]int{"id": 1, "email": 2, "age": 3, "city": 4}
+for k := range m {
+	fmt.Print(k, " ")
+}
+fmt.Println()
 ```
+
+Run it about eight times.
 
 ```text
-slice  x=[99 2 3]  y=[99 2 3]
+id email age city
+id email age city
+email age city id
+id email age city
 ```
 
-You will use slices for almost everything. Arrays show up mostly as the backing
-store behind a slice, or for fixed-size things like a `[16]byte` UUID — which
-you will meet again in course 13.
+**Mostly stable, occasionally rotated.** Now change it to twelve keys and run it
+five times — the order is different every single run.
 
-### append, and the trap underneath it
-
-`append` adds to a slice, growing the backing array when it runs out of room:
+That gap is the trap. Go deliberately does not guarantee map order, and small
+maps happen to *look* consistent, so a test written against a three-key map
+passes for months and then fails in CI the day someone adds a fourth field.
+**Never depend on it.** When you need order, sort:
 
 ```go
-var s []int
-for i := 0; i < 9; i++ {
-	s = append(s, i)
+for _, k := range slices.Sorted(maps.Keys(m)) {
+	fmt.Println(k, m[k])
 }
 ```
 
-```text
-len=1 cap=4
-len=5 cap=8
-len=9 cap=16
-```
-
-Capacity roughly doubles. The exact numbers are an implementation detail that
-has changed between Go releases — never write code that depends on them.
-
-Note that `append` **returns** a slice. It has to: if it reallocates, the new
-header points somewhere else entirely. Always write `s = append(s, v)`.
-
-Now the trap. When there *is* spare capacity, `append` writes into the existing
-backing array:
+The other thing to know about maps is the comma-ok form, which separates
+"missing" from "present but zero":
 
 ```go
-base := make([]int, 3, 8)
-base[0], base[1], base[2] = 1, 2, 3
-
-first := append(base, 100)
-second := append(base, 200)
-
-fmt.Printf("  base   = %v\n", base)
-fmt.Printf("  first  = %v\n", first)
-fmt.Printf("  second = %v\n", second)
+count, ok := m["nope"]   // 0, false
 ```
 
-```text
-  base   = [1 2 3]
-  first  = [1 2 3 200]
-  second = [1 2 3 200]
-```
+You will need that distinction in course 10 — a struct tag that is absent means
+something different from one that is empty.
 
-`first` was silently overwritten. Both appends had room in `base`'s backing
-array, so both wrote to index 3, and `second` won.
+## Build something
 
-This is not a Go wart so much as the cost of slices being cheap. The fix, when
-you need an independent copy, is to make one:
+Add this to your `greet` module as `columns.go`, and a test alongside it:
 
 ```go
-independent := make([]int, len(base))
-copy(independent, base)
+func ColumnNames(cols []string) string
 ```
 
-If this feels like a footgun: it is, and it is the single most common source of
-surprising bugs in Go code. You will see the ORM take exactly this precaution
-when it builds column lists in course 12.
+It takes column names and returns them comma-separated and sorted — `["email",
+"id"]` becomes `"email, id"` — with two rules: it must return `""` for an empty
+or nil slice, and it must not modify the caller's slice.
 
-## Maps
-
-A map is an unordered collection of key–value pairs:
-
-```go
-ages := map[string]int{"ada": 36}
-```
-
-Reading a key that is not present returns the value type's **zero value**, not
-an error and not a panic:
-
-```go
-fmt.Printf("ages[\"nobody\"] = %d\n", ages["nobody"])
-```
-
-```text
-ages["nobody"] = 0
-```
-
-Which means `ages["nobody"] == 0` cannot tell you whether the key was missing or
-genuinely stored as zero. For that, use the two-value form, universally called
-**comma-ok**:
-
-```go
-if v, ok := ages["ada"]; ok {
-	fmt.Printf("ada -> %d\n", v)
-}
-
-v, ok := ages["nobody"]
-fmt.Printf("nobody -> %d (ok=%t)\n", v, ok)
-```
-
-```text
-ada -> 36
-nobody -> 0 (ok=false)
-```
-
-The zero value of a map is `nil`, and a nil map is **readable**:
-
-```go
-var nilMap map[string]int
-fmt.Println(nilMap["x"], len(nilMap))
-```
-
-```text
-0 0
-```
-
-But writing to one panics:
-
-```go
-var m map[string]int
-m["boom"] = 1
-```
-
-```text
-panic: assignment to entry in nil map
-```
-
-So a nil map is a fine empty map to read from, and useless to write to. Create
-one with `make(map[string]int)` or a literal before you assign.
-
-Map iteration order is **deliberately randomised** — Go shuffles it so you cannot
-accidentally depend on an order that was never guaranteed. If you need stable
-output, collect the keys and sort them.
-
-## Why this matters for the ORM
-
-Zero values are elegant right up to the moment they are ambiguous, and an ORM
-lives at exactly that boundary.
-
-Consider a settings row. The user has a `Notify` flag and a `Limit`:
-
-```go
-type Settings struct {
-	Notify bool // false: off, or never set?
-	Limit  *int // nil: never set. non-nil: set, even to 0.
-}
-```
-
-```text
-Notify = false  -- cannot tell 'off' from 'unset'
-Limit  = <nil>  -- nil means unset
-Limit  = 0 (set explicitly to zero, and we can tell)
-```
-
-When you hand a struct to an ORM and say "save this", it has to decide what
-`Notify: false` means. Did you turn notifications off, or did you simply not
-set that field, in which case the column's database default should win?
-
-Go gives you no way to tell from the value alone. The way out is the pointer:
-`*int` has an extra state — `nil` — that `int` does not, so "unset" and
-"explicitly zero" become distinguishable.
-
-The ORM you build takes exactly this position: a zero-valued field on a column
-with a database default is **omitted** from the `INSERT`, so the default
-applies. If you want to store an explicit zero, you make the field a pointer.
-That rule will feel arbitrary when you meet it in course 12. It is not — it
-falls directly out of the fact that `int` has no spare state to encode "absent".
-
-## Exercise
-
-In your module, write a function with this signature:
-
-```go
-func Initials(name string) string
-```
-
-It should return the uppercase first letter of each space-separated word:
-`"ada lovelace"` becomes `"AL"`.
-
-Then make it survive input that is not plain ASCII. Test it with `"émile zola"`
-and confirm you get `"ÉZ"` rather than a mangled byte.
-
-```bash
-cd greet
-go test ./...
-```
+That second rule is the whole course in one line. Write the test first, using
+what you now know: pass in a slice, call the function, then check the *original*
+slice is unchanged. Get it to fail, then make it pass.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself once you have written it</summary>
 
 ```go
-package main
-
-import (
-	"strings"
-	"unicode"
-)
-
-func Initials(name string) string {
-	var out []rune
-	for _, word := range strings.Fields(name) {
-		r := []rune(word)
-		if len(r) > 0 {
-			out = append(out, unicode.ToUpper(r[0]))
-		}
+func ColumnNames(cols []string) string {
+	if len(cols) == 0 {
+		return ""
 	}
-	return string(out)
+	sorted := slices.Clone(cols)
+	slices.Sort(sorted)
+	return strings.Join(sorted, ", ")
 }
 ```
 
-The important line is `[]rune(word)`. Writing `word[0]` would give you the first
-*byte*, which for `"émile"` is half of `é` — and `unicode.ToUpper` on half a
-character produces garbage.
+`len(cols) == 0` covers nil and empty together — no separate nil check needed,
+because `len` of a nil slice is 0.
 
-`strings.Fields` splits on any run of whitespace and discards empties, which is
-almost always what you want over `strings.Split(name, " ")`.
+`slices.Clone` is the point. `slices.Sort` sorts **in place**, so without the
+clone this function would silently reorder the caller's slice — the append trap
+wearing a different hat. A function that quietly mutates its argument is the kind
+of bug that takes a day to find.
+
+Your test should prove it:
+
+```go
+input := []string{"id", "email"}
+ColumnNames(input)
+if input[0] != "id" {
+	t.Errorf("ColumnNames modified its input: %v", input)
+}
+```
+
+If you wrote `sort.Strings(cols)` directly, that test is what catches you.
 
 </details>
 
 ## Next
 
-You can now reason about what a Go value *is*. Next we give values behaviour:
-structs, methods, and the receiver decision that trips up everyone at least once.
+Structs and methods — giving these values behaviour, and the pointer-versus-value
+receiver decision that trips up everyone coming from another language. You will
+meet the same copying rules from this course, one level up.

@@ -12,20 +12,17 @@ minutes: 45
 draft: false
 ---
 
-Interfaces let one function work with many types, provided those types share
-methods. Generics let one function work with many types that share **nothing** —
-and still hand you back a real, typed result.
+Interfaces let one function work with many types that share methods. Generics let
+one function work with many types that share **nothing** — and still hand you
+back a real, typed result.
 
-This is the course that makes the promise on the front page literal. By the end
-you will understand exactly why `Select[User](qb)` gives you `[]User` and not
-`[]any`.
+This is the course that makes the front page literal. By the end you will have
+built, by hand, the exact shape that makes `Select[User](db)` return `[]User`
+instead of `[]any`.
 
-Generics arrived in Go 1.18. They are also the feature most commonly overused,
-so the last section is about when *not* to reach for them.
+## The problem, felt
 
-## The problem
-
-Before generics, a function that worked on any slice returned `any`:
+Write the pre-generics version and use it:
 
 ```go
 func FirstAny(items []any) any {
@@ -34,25 +31,28 @@ func FirstAny(items []any) any {
 	}
 	return items[0]
 }
+
+func main() {
+	names := []any{"Ada", "Alan"}
+	got := FirstAny(names)
+	fmt.Println(got + "!")
+}
 ```
 
-The caller gets back something they have to assert:
+**Predict: does that compile?**
 
 ```text
-FirstAny -> Ada (type string) — needs a cast to use
+invalid operation: got + "!" (mismatched types any and untyped string)
 ```
 
-The type is *there* at runtime, but the compiler has forgotten it. Every caller
-writes `s := raw.(string)`, and every caller can get that wrong — a mistake the
-compiler cannot catch, because as far as it knows the value is `any`.
-
-The alternative was writing `FirstString`, `FirstInt`, `FirstUser` — the same
-five lines, once per type.
+The value *is* a string at runtime, but the compiler has forgotten. Every caller
+must write `got.(string)`, and every caller can get that wrong — a runtime panic
+the compiler cannot help with. The alternative was writing `FirstString`,
+`FirstInt`, `FirstUser`: the same five lines forever.
 
 ## Type parameters
 
-A generic function declares its type parameters in square brackets before the
-arguments:
+Declare them in square brackets before the arguments:
 
 ```go
 func First[T any](items []T) (T, bool) {
@@ -64,30 +64,32 @@ func First[T any](items []T) (T, bool) {
 }
 ```
 
-`T` is a placeholder for a type the caller supplies. `any` is its **constraint**
-— the set of types allowed. `any` means no restriction.
+Call it with three different types and print what you get:
 
-```text
-First    -> Ada (type string) ok=true — already a string
-First    -> 3 (type int) — same function, no cast
-empty    -> 0 (type float64) ok=false — the zero value of T
+```go
+name, _ := First([]string{"Ada", "Alan"})
+n, _ := First([]int{3, 4})
+_, ok := First([]float64{})
+fmt.Printf("%q %d %t\n", name, n, ok)
 ```
 
-One function, three types, no assertions. The compiler knows `First(names)`
-returns a `string`, so misusing it is a compile error rather than a runtime
-panic.
+```text
+"Ada" 3 false
+```
 
-Note `var zero T`. You cannot write `return nil` — `T` might be `int`, where nil
-is meaningless. `var zero T` gives you the zero value for whatever `T` turns out
-to be, which is course 02 paying off: every type has one, so this always works.
+No assertions anywhere, and `name + "!"` now compiles. `T` is a placeholder the
+caller fills in; `any` is its **constraint**, meaning no restriction.
+
+Note `var zero T`. You cannot `return nil` — `T` might be `int`. Every type has a
+zero value (course 02), so `var zero T` always works. That is the kind of thing
+Go's design decisions buy you three courses later.
 
 ## Constraints
 
-`any` allows every type, which means you can do almost nothing with the value —
-you cannot add it, compare it, or call methods on it. Constraints widen what
-you are allowed to do by narrowing what can be passed.
+`any` allows every type, which means you can do almost nothing with the value.
+Constraints widen what you may do by narrowing what may be passed.
 
-**`comparable`** permits `==` and `!=`:
+**`comparable`** permits `==`:
 
 ```go
 func Contains[T comparable](items []T, want T) bool {
@@ -100,14 +102,14 @@ func Contains[T comparable](items []T, want T) bool {
 }
 ```
 
-This is the same comparability from course 03 — so `Contains` accepts a struct
-of ints, and rejects a struct containing a slice, at compile time.
+Same comparability as course 03 — try passing a slice of structs-containing-slices
+and the compiler stops you.
 
-**A type set** lists the permitted underlying types:
+**A type set** lists permitted underlying types:
 
 ```go
 type Number interface {
-	~int | ~int64 | ~float64
+	int | float64
 }
 
 func Sum[T Number](items []T) T {
@@ -119,79 +121,85 @@ func Sum[T Number](items []T) T {
 }
 ```
 
-An interface used this way is a constraint, not a runtime type — you can't
-declare a variable of type `Number`. It exists only to answer "may this type be
-substituted for `T`?"
-
-### The tilde
-
-That `~` matters:
+Now the prediction. You have a named type:
 
 ```go
 type Celsius float64
+
+fmt.Println(Sum([]Celsius{20, 2}))
 ```
 
-```text
-Sum ints     6
-Sum floats   4
-Sum Celsius  22 <- named type, thanks to ~
-```
-
-`~float64` means "any type whose **underlying** type is float64", which includes
-`Celsius`. Plain `float64` means that exact type and nothing else:
+**`Celsius` is a float64. Does this compile?**
 
 ```text
-./main.go:31:33: Celsius does not satisfy Number
+./main.go:17:30: Celsius does not satisfy Number
 (possibly missing ~ for float64 in Number)
 ```
 
-The compiler even names the fix. Since Go code defines named types constantly —
-`type Celsius float64`, `type UserID int` — you almost always want `~`.
+No — and the compiler tells you the fix. Change the constraint to `~int | ~float64`:
+
+```text
+22
+```
+
+**`~float64` means "any type whose underlying type is float64"**, which includes
+`Celsius`. Plain `float64` means that exact type and nothing else. Since Go code
+declares named types constantly — `type UserID int`, `type Celsius float64` — you
+almost always want the tilde.
 
 ## Type inference
 
-You rarely write the type parameter explicitly. Go infers it from the arguments:
+You rarely write the type parameter. Go infers it from the arguments:
 
 ```go
 names := Map(users, func(u User) string { return u.Name })
-lens  := Map(names, func(s string) int { return len(s) })
+lens := Map(names, func(s string) int { return len(s) })
 ```
 
-```text
-inferred from args: []string [Ada Alan]
-inferred again:     []int [3 4]
-```
+Both type parameters of `Map[In, Out any]` are inferred — `In` from the slice,
+`Out` from the function's return type.
 
-`Map[In, Out any]` has two type parameters and both are inferred — `In` from the
-slice, `Out` from the function's return type.
-
-Inference only works when there is something to infer *from*. A function with no
-arguments of type `T` cannot be inferred:
-
-```text
-./main.go:26:12: in call to Empty, cannot infer T
-```
-
-You supply it by hand: `Empty[User]()`. Remember that shape — it is exactly what
-the ORM does.
-
-## Methods cannot have type parameters
-
-This limitation shapes every generic API in Go, so it is worth meeting directly:
+Inference needs something to infer *from*. **Predict what happens here:**
 
 ```go
+func Empty[T any]() []T { return nil }
+
+func useIt() { _ = Empty() }
+```
+
+```text
+./bad.go:5:25: in call to Empty, cannot infer T
+```
+
+You supply it by hand: `Empty[User]()`. Hold on to that shape — it is exactly
+what `Select[User](db)` is doing, and why you must always name the type there.
+
+## Your turn: the wall you will hit
+
+Try to write the API you actually want:
+
+```go
+type DB struct{}
+
 func (db *DB) Select[T any]() []T { return nil }
 ```
 
+**Predict the error.**
+
 ```text
-./main.go:5:21: syntax error: method must have no type parameters
+./bad.go:5:21: syntax error: method must have no type parameters
 ```
 
-A method may **use** its receiver's type parameters, but it cannot introduce its
-own. So `db.Select[User]()` is not expressible, no matter how much you want it.
+A method may **use** its receiver's type parameters but cannot introduce its own.
+So `db.Select[User]()` is not expressible in Go, at all.
 
-The workaround is a generic **function** that takes the receiver and returns a
-generic **struct**:
+Work around it: put the type parameter on a **struct**, and use a package-level
+**function** to construct it. Build this yourself before reading on — a
+`Query[T]` type with a `Limit` method that chains, and an `All` method returning
+`[]T`.
+
+<details>
+<summary>Compare with yours</summary>
 
 ```go
 type Query[T any] struct {
@@ -215,94 +223,79 @@ func (q *Query[T]) All() []T {
 
 ```go
 users := Select[User](db).Limit(10).All()
+fmt.Printf("%T with cap %d\n", users, cap(users))
 ```
 
 ```text
 []main.User with cap 10
 ```
 
-The type parameter lives on the **struct**. Once `Select[User]` has produced a
-`*Query[User]`, every method on it can say `T` freely — `Limit` returns
-`*Query[T]` so the chain keeps its type, and `All` returns `[]T`.
+The type parameter lives on the struct. Once `Select[User]` has produced a
+`*Query[User]`, every method may say `T` freely — `Limit` returns `*Query[T]` so
+the chain keeps its type, and `All` returns `[]T`.
+
+Pointer receivers, from course 03: value receivers here would discard every
+clause.
+
+</details>
 
 ## When not to use generics
 
-Generics are the most over-applied feature in modern Go. Some honest guidance:
+Generics are the most over-applied feature in modern Go:
 
-- **One concrete type? Don't.** If only `[]User` will ever be passed, write it
-  for `User`. You can generalise later; the change is mechanical.
-- **Two or three near-copies? Probably still don't.** The Go proverb is *"a
-  little copying is better than a little dependency."* Duplication is cheap to
-  read; a clever constraint is not.
+- **One concrete type? Don't.** Write it for `User`. Generalising later is
+  mechanical.
+- **Two or three near-copies? Probably still don't.** *"A little copying is
+  better than a little dependency."* Duplication is cheap to read; a clever
+  constraint is not.
 - **Methods differ per type? Use an interface.** Generics are for code that is
-  identical across types. Interfaces are for behaviour that differs. Reaching
-  for generics where an interface belongs produces constraint hierarchies that
-  read like another language.
-- **Do use them** for containers and operations that are genuinely
-  type-independent — a slice helper, a cache, a result set — and where losing
-  the type would push casts onto every caller.
+  *identical* across types; interfaces are for behaviour that *differs*.
+- **Do use them** for containers and genuinely type-independent operations — a
+  slice helper, a cache, a result set.
 
-That last clause is the real test: **who pays if the type is erased?** If the
-answer is "every caller, forever", generics earn their place.
+The real test: **who pays if the type is erased?** If the answer is "every
+caller, forever", generics earn their place. That is precisely the ORM's case.
 
-## Why this matters for the ORM
+## What you just built
 
-Here is the actual signature from the ORM you are building:
+The real signature from the ORM:
 
 ```go
 func Select[T any](d *DB) *SelectQuery[T]
-
-type SelectQuery[T any] struct { /* ... */ }
 
 func (q *SelectQuery[T]) Where(condition Condition) *SelectQuery[T]
 func (q *SelectQuery[T]) All(ctx context.Context) ([]T, error)
 ```
 
-That is the exact pattern above, and it is not a style choice — **the language
-forces it.** `qb.Select[User]()` cannot exist, so the entry point is a package
-function and the type parameter rides on the struct from there.
+That is your `Query[T]`, and it is not a style choice — **the language forces
+it**, as you proved with the compile error above.
 
-The payoff is the last line. `All` returns `([]T, error)`, so:
+The payoff is the last line: `All` returns `([]T, error)`, so
 
 ```go
 users, err := builder.Select[User](qb).Where(...).All(ctx)
 ```
 
-gives you a `[]User`. No `any`, no type assertion, no reflection at the call
-site. Rename a field and the compiler finds every use.
+gives you a `[]User`. Reflection still happens — course 08 uses it to map
+columns to fields — but it happens *inside*, once, and the generic signature
+keeps it there.
 
-Reflection still happens — course 08 uses it to read struct tags and map columns
-to fields — but it happens *inside* the ORM, once, and the generic signature
-keeps it there. The caller only ever sees their own type.
+## Build something
 
-And `Select[User]` must be written explicitly, because there is no argument of
-type `User` to infer from — precisely the `Empty[User]()` case above.
-
-## Exercise
-
-Write two generic helpers you will genuinely reuse:
+Two helpers you will genuinely reuse:
 
 ```go
 func Keys[K comparable, V any](m map[K]V) []K
 func Filter[T any](items []T, keep func(T) bool) []T
 ```
 
-`Keys` returns a map's keys. `Filter` returns only the items for which `keep`
-returns true.
+Then answer this **with a test**: why must `K` be `comparable` when `Keys` never
+compares anything — and why can `V` be `any`?
 
-Then answer this with a test: what constraint does `Keys` need on `K`, and why
-can `V` be `any`?
-
-```bash
-cd greet
-go test ./...
-```
-
-Map iteration order is randomised — course 02 — so sort before comparing, or
-compare as a set.
+Map iteration order is not guaranteed (course 02), so sort before comparing.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself</summary>
 
 ```go
 func Keys[K comparable, V any](m map[K]V) []K {
@@ -324,47 +317,29 @@ func Filter[T any](items []T, keep func(T) bool) []T {
 }
 ```
 
-```go
-func TestKeys(t *testing.T) {
-	got := Keys(map[string]int{"b": 2, "a": 1})
-	sort.Strings(got)
-	want := []string{"a", "b"}
-	if !slices.Equal(got, want) {
-		t.Errorf("Keys() = %v, want %v", got, want)
-	}
-}
-```
-
-**`K` must be `comparable`** — not because `Keys` compares anything, but because
-Go requires every map key type to be comparable. The constraint on the type
-parameter has to be at least as strict as the constraint on `map[K]V`, or the
-type would not be a legal map key.
+**`K` must be `comparable`** not because `Keys` compares anything, but because Go
+requires every map key type to be comparable. The constraint on `T` has to be at
+least as strict as the one on `map[K]V`.
 
 **`V` can be `any`** because the function never touches the values. Constrain
-only what you actually use; a tighter constraint than necessary just rejects
-callers for no reason.
+only what you use — a tighter constraint than necessary just rejects callers for
+no reason.
 
-`slices.Equal` is in the standard library from Go 1.21 and saves a loop.
-
-The standard library also has close relatives of both helpers, and the
-differences are instructive. `maps.Keys` returns an **iterator**, not a slice,
-so you compose it:
+Now look at what the standard library already has, and read the signatures
+carefully. `maps.Keys` returns an **iterator**, not a slice, so you compose it:
 
 ```go
 keys := slices.Sorted(maps.Keys(m))
 ```
 
-And `slices.DeleteFunc` is `Filter` inverted — it removes what matches, and it
-modifies the slice in place rather than returning a new one.
+And `slices.DeleteFunc` is `Filter` inverted — it removes what matches, in place.
 
-So the real lesson is smaller than "don't write helpers": **check the standard
-library first, then read its signature carefully.** Close is not the same as
-equivalent.
+The lesson is not "don't write helpers". It is **check the standard library
+first, then read its signature**, because close is not the same as equivalent.
 
 </details>
 
 ## Next
 
-You can write one function that serves many types. Next: running many things at
-once. Goroutines, channels, and the mutex that will guard the ORM's metadata
-cache in course 11.
+Concurrency. Goroutines, channels, and the mutex that will guard the ORM's
+metadata cache — plus the detector that finds the bugs you cannot see.

@@ -13,195 +13,207 @@ draft: false
 ---
 
 Everything so far has been checked by the compiler. Reflection is the escape
-hatch: it lets a program inspect a type it has never seen, read the tags on its
-fields, and write into them — all at runtime, with none of that safety.
+hatch: a program inspecting a type it has never seen, reading the tags on its
+fields, and writing into them at runtime.
 
 It is how `Select[User]` knows that `User` has a column called `email`. It is
-also the part of the ORM most likely to panic, so this course spends as much
-time on the failure modes as on the API.
-
-And it is slower than direct field access — but not in the way you have probably
-been told. The benchmarks near the end are the reason the registry exists.
+also where you will meet your first panics that no compiler warned you about — so
+you are going to trigger several of them on purpose.
 
 ## Type and Value
 
-Reflection has two halves. `reflect.Type` describes the *shape*;
-`reflect.Value` holds the *data*:
+Reflection has two halves. Run this:
 
 ```go
-t := reflect.TypeOf(u)
-v := reflect.ValueOf(u)
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type User struct {
+	ID    string `po:"id,primaryKey,uuid"`
+	Email string `po:"email,varchar(320),unique"`
+	Age   int    `po:"age"`
+	Temp  string
+	notes string
+}
+
+func main() {
+	u := User{ID: "u1", Email: "ada@example.com", Age: 36}
+	t := reflect.TypeOf(u)
+	fmt.Println(t, t.Kind(), t.NumField())
+}
 ```
 
 ```text
-Type: main.User   Kind: struct   Name: "User"   PkgPath: "main"
-fields: 5
+main.User struct 5
 ```
 
-You reach for `Type` to ask what fields exist and what tags they carry, and
-`Value` to read or write what is in them. Most reflection code holds both,
-walking them in step: `t.Field(i)` describes the field, `v.Field(i)` contains it.
+`reflect.Type` describes the **shape**; `reflect.Value` holds the **data**. Most
+reflection code holds both and walks them in step — `t.Field(i)` describes a
+field, `v.Field(i)` contains it.
+
+**Predict `NumField()` before you run it.** Five, including the unexported
+`notes` — reflection sees everything.
 
 ## Kind is not Type
 
-This distinction causes more confusion than any other part of the package:
+This distinction causes more confusion than the rest of the package combined. Add
+a named type and print both:
 
 ```go
 type UserID string
+
+var raw string = "x"
+var wrapped UserID = "x"
+fmt.Println(reflect.TypeOf(raw), reflect.TypeOf(raw).Kind())
+fmt.Println(reflect.TypeOf(wrapped), reflect.TypeOf(wrapped).Kind())
 ```
 
 ```text
-x   Type=string          Kind=string
-x   Type=main.UserID     Kind=string
+string        string
+main.UserID   string
 ```
 
-**`Type` is the declared type. `Kind` is the underlying machine representation.**
-`UserID` and `string` are different types that share a kind.
+**`Type` is what was declared. `Kind` is the underlying machine representation.**
+`UserID` and `string` are different types sharing a kind.
 
-Switch on `Kind` when you care how a value is laid out — "is this a struct, a
-slice, a pointer?" Compare `Type` when you care about identity — "is this
-*exactly* `time.Time`?"
+Switch on `Kind` when you care how a value is laid out ("is this a struct, a
+slice, a pointer?"). Compare `Type` when you care about identity ("is this
+*exactly* `time.Time`?"). Get it backwards and you write a type switch that
+silently flattens every named string into a plain one.
 
-Get it backwards and you write a type switch that silently treats every named
-string as a plain string. It is also the same `~` distinction from course 06,
-seen from the runtime side: `~string` in a constraint means "kind is string".
+It is also course 06's `~` seen from the runtime side: `~string` in a constraint
+means "kind is string".
 
-## Walking the fields
-
-```go
-for i := range t.NumField() {
-	f := t.Field(i)
-	tag, ok := f.Tag.Lookup("po")
-	// ...
-}
-```
-
-```text
-ID     string   exported=true  tag="id,primaryKey,uuid"         found=true  value=u1
-Email  string   exported=true  tag="email,varchar(320),unique"  found=true  value=ada@example.com
-Age    int      exported=true  tag="age"                        found=true  value=36
-Temp   string   exported=true  tag=""                           found=false  value=
-notes  string   exported=false tag=""                           found=false  value=<unexported>
-```
-
-Since Go 1.25 there is an iterator that reads better and does the same thing:
+## Walking fields and reading tags
 
 ```go
 for f := range t.Fields() {
-	// f is a reflect.StructField
+	tag, ok := f.Tag.Lookup("po")
+	fmt.Printf("%-6s exported=%-5t tag=%-28q found=%t\n",
+		f.Name, f.IsExported(), tag, ok)
 }
 ```
 
-It returns `iter.Seq[StructField]`. The ORM uses this form. Use the indexed loop
-only when you actually need `i`.
+```text
+ID     exported=true  tag="id,primaryKey,uuid"         found=true
+Email  exported=true  tag="email,varchar(320),unique"  found=true
+Age    exported=true  tag="age"                        found=true
+Temp   exported=true  tag=""                           found=false
+notes  exported=false tag=""                           found=false
+```
 
-Two things in that output matter later.
+`Fields()` is an iterator added in Go 1.25 and is what the ORM uses; the older
+`for i := range t.NumField()` with `t.Field(i)` does the same thing when you need
+the index.
 
-**`Lookup` is not `Get`.** `Get` returns `""` both when the tag is absent and
-when it is present but empty. `Lookup` returns a second `bool` that tells them
-apart. `Temp` has no `po` tag at all — a distinction the ORM needs, because "no
-tag" means *skip this field* while an explicit empty tag is a mistake worth
-reporting.
+Two details that matter later:
 
-**Unexported fields still appear.** `notes` shows up in the walk. You must skip
-it yourself with `f.IsExported()` — reflection sees it, but touching its value
-panics.
+**`Lookup` is not `Get`.** `Get` returns `""` both when a tag is missing and when
+it is present but empty. `Lookup`'s second return tells them apart — and the ORM
+needs that, because "no tag" means *skip this field* while an empty tag is a
+mistake worth reporting.
 
-## Struct tags
+**Unexported fields still appear.** You skip them yourself with `IsExported()`.
 
-A struct tag is just a string literal after the field. The convention — and it
-is only a convention, enforced by nothing at compile time — is
-space-separated `key:"value"` pairs:
+### Your turn: break the tags
+
+A struct tag is a string literal, and the `key:"value"` convention is enforced by
+nothing at compile time. Type these four and see which survive:
 
 ```go
-Email string `po:"email,varchar(320),unique" json:"email,omitempty"`
+type Bad struct {
+	A string `po:'single quotes'`
+	B string `po: "leading space"`
+	C string `po:"ok" json:"c,omitempty"`
+	D string `PO:"uppercase"`
+}
 ```
-
-Each library reads its own key and ignores the rest. `reflect` provides `Get`
-and `Lookup`; **everything inside the quotes is yours to parse.** The commas in
-`po:"email,varchar(320),unique"` mean nothing to Go — the ORM splits them.
-
-The catch is that malformed tags fail silently:
 
 ```text
-A raw="po:'single quotes'"        -> po=""     found=false
-B raw="po: \"leading space\""     -> po=""     found=false
-C raw="po:\"ok\" json:\"c\""      -> po="ok"   found=true
-D raw="PO:\"uppercase\""          -> po=""     found=false
+A -> po=""    found=false
+B -> po=""    found=false
+C -> po="ok"  found=true
+D -> po=""    found=false
 ```
 
-Three of those four are typos and none of them is an error. The field just
-quietly vanishes from your schema.
-
-`go vet` catches some of it:
+Three typos, zero errors — the fields just vanish from your schema. Now run
+`go vet ./...`:
 
 ```text
-main.go:9:2: struct field tag `po:'single quotes'` not compatible with
-reflect.StructTag.Get: bad syntax for struct tag value
+struct field tag `po:'single quotes'` not compatible with reflect.StructTag.Get:
+bad syntax for struct tag value
 ```
 
-But notice what it does **not** catch: `PO:` instead of `po:`. That is
-well-formed — it is simply a key nobody reads. Vet is a good safety net and not
-a complete one, which is a large part of why course 10 validates tags explicitly
-rather than trusting them.
+**Vet catches two of the three.** It does not catch `PO:` — that is well-formed,
+just a key nobody reads. Good safety net, not a complete one, which is why
+course 10 validates tags explicitly instead of trusting them.
 
 ## Writing values
 
-Reading is the easy half. Writing requires the value to be **settable**, and by
-default it is not:
-
-```text
-ValueOf(u).CanSet()         = false
-ValueOf(&u).Elem().CanSet() = true
-unexported .CanSet()        = false
-```
-
-`reflect.ValueOf(u)` receives a **copy** — course 03's pass-by-value rule, and
-reflection cannot opt out of it. Writing to that copy would be silently useless,
-so the package refuses. You have to pass a pointer and step through it with
-`Elem()`:
+Reading is easy. Writing needs the value to be **settable**, and by default it is
+not. **Predict all three:**
 
 ```go
-v := reflect.ValueOf(&u).Elem()
-v.Field(1).SetString("ada@go.dev")
+u := User{}
+fmt.Println(reflect.ValueOf(u).Field(0).CanSet())
+fmt.Println(reflect.ValueOf(&u).Elem().Field(0).CanSet())
+fmt.Println(reflect.ValueOf(&u).Elem().Field(4).CanSet())  // notes
 ```
 
 ```text
-after SetString: {ID:u1 Email:ada@go.dev notes:}
+false
+true
+false
 ```
 
-Settability needs both conditions: **addressable** (reached through a pointer)
-and **exported**. Unexported fields are never settable, whatever you do.
+`reflect.ValueOf(u)` receives a **copy** — course 03's pass-by-value rule, which
+reflection cannot opt out of. Writing to it would be silently useless, so the
+package refuses. Pass a pointer and step through with `Elem()`. Unexported fields
+are never settable whatever you do.
 
-To build a value from nothing — which is exactly what scanning a database row
-into a fresh struct is — use `reflect.New`:
+Now build a value from nothing, which is exactly what scanning a database row is:
 
 ```go
+row := map[string]any{"id": "u2", "email": "alan@go.dev"}
 dst := reflect.New(reflect.TypeOf(User{})).Elem()
+
 for f := range dst.Type().Fields() {
-	name, ok := f.Tag.Lookup("po")
+	tag, ok := f.Tag.Lookup("po")
 	if !ok {
 		continue
 	}
-	col, _, _ := strings.Cut(name, ",")
+	col, _, _ := strings.Cut(tag, ",")
 	if val, present := row[col]; present {
 		dst.FieldByName(f.Name).Set(reflect.ValueOf(val))
 	}
 }
+fmt.Printf("%+v\n", dst.Interface().(User))
 ```
 
 ```text
-built: {ID:u2 Email:alan@go.dev notes:}
+{ID:u2 Email:alan@go.dev Age:0 Temp: notes:}
 ```
 
-`reflect.New(t)` returns a `Value` holding a `*T`; `.Elem()` steps into the `T`,
-which is addressable and therefore settable. That is the entire shape of the
-ORM's row scanner in twelve lines.
+`reflect.New(t)` gives you a `Value` holding a `*T`; `.Elem()` steps into the
+`T`, which is addressable and therefore settable. **That is the ORM's row scanner
+in twelve lines.**
 
-## What panics
+## Your turn: collect the panics
 
-Reflection moves type errors from compile time to runtime, so learn the messages
-now rather than in production:
+Reflection moves type errors from compile time to runtime. Trigger these four
+yourself — wrap each in a function with `recover()` so you can run them in one
+go:
+
+```go
+_ = reflect.ValueOf(u).Field(4).Interface()   // unexported
+reflect.ValueOf(u).Field(0).SetString("x")    // not addressable
+reflect.ValueOf(&u).Elem().Field(0).SetInt(3) // wrong kind
+_ = reflect.ValueOf(u).Field(9)               // out of range
+```
 
 ```text
 panic: reflect.Value.Interface: cannot return value obtained from unexported field or method
@@ -210,17 +222,42 @@ panic: reflect: call of reflect.Value.SetInt on string Value
 panic: reflect: Field index out of range
 ```
 
-In order: you touched an unexported field, you forgot the pointer, you used the
-wrong setter for the kind, and you indexed past `NumField()`.
+Each is avoidable with a guard you already know: `IsExported`, `CanSet`, a `Kind`
+check, a bounds check. Reflection code that skips them is a 3am page waiting to
+happen.
 
-They are all avoidable with a guard — `IsExported`, `CanSet`, a `Kind` check, a
-bounds check — and reflection code that skips those guards will eventually be a
-3am page. Course 09 is about testing precisely this kind of code.
+## Benchmark it yourself
 
-## What it actually costs
+"Reflection is slow" is repeated so often that almost nobody measures it. You are
+going to.
 
-Reflection is "slow" is repeated so often that nobody checks. Here is the
-measurement, on the same struct, Go 1.26:
+Write these five benchmarks in a `_test.go` file and **predict the ranking before
+you run them:**
+
+```go
+var strSink string
+
+func BenchmarkDirect(b *testing.B) {
+	for b.Loop() { strSink = m.Email }
+}
+
+func BenchmarkReflectFieldIndex(b *testing.B) {
+	v := reflect.ValueOf(m)
+	for b.Loop() { strSink = v.Field(1).String() }
+}
+
+func BenchmarkReflectFieldByName(b *testing.B) {
+	v := reflect.ValueOf(m)
+	for b.Loop() { strSink = v.FieldByName("Email").String() }
+}
+```
+
+Plus one that parses the tags on every call, and one that caches the result in a
+map.
+
+```bash
+go test -bench=. -benchmem -run=^$ ./...
+```
 
 ```text
 BenchmarkDirect               2.12 ns/op     0 B/op   0 allocs/op
@@ -231,31 +268,34 @@ BenchmarkParseUncached      536.80 ns/op   488 B/op  13 allocs/op
 BenchmarkParseCached          9.66 ns/op     0 B/op   0 allocs/op
 ```
 
-Read those carefully, because two of them are surprising.
+Two of those should surprise you.
 
-**`v.Field(1)` costs the same as `u.Email`** — 2.28 ns against 2.12 ns, no
+**`v.Field(1)` costs the same as `u.Email`** — 2.28 ns against 2.12 ns, zero
 allocations. Once you hold a `reflect.Value` and an integer index, reflection is
 essentially free. The folklore that it is "100× slower" is simply wrong for this
 operation.
 
-**`FieldByName` is 12× slower than `Field(i)`.** It has to search the field names
-as strings on every single call. The cost is not reflection — it is the lookup.
+**`FieldByName` is 12× slower**, because it searches the field names as strings
+on every call. The cost is not reflection — it is the *lookup*.
 
-**Reading a type's tags costs 537 ns and 13 allocations**, and caching the result
-makes it 9.7 ns and zero. That is **55×**, and it is the whole argument for the
-registry.
+And reading a type's tags costs **537 ns and 13 allocations**; caching makes it
+9.7 ns and zero. **55×.**
 
-So the accurate rule is not "reflection is slow". It is:
+So the rule is not "reflection is slow":
 
 > **Resolving a name is expensive. Using a resolved index is not.**
-> Do the resolving once, cache it, and index from then on.
+> Do the resolving once, cache it, index from then on.
 
-Which is the same shape as compiling a regex once instead of per call, or
-preparing a SQL statement.
+Same shape as compiling a regex once instead of per call.
 
-## Why this matters for the ORM
+One trap while you write these: if your sink variable is `any` rather than
+`string`, boxing allocates and swamps the measurement — direct access will look
+as slow as reflection. Benchmarks lie easily; check `allocs/op` before believing
+one.
 
-Here is the real parser, and every piece of this course is in it:
+## What you just built
+
+The real parser, with every piece of this course in it:
 
 ```go
 type Parser struct {
@@ -284,42 +324,15 @@ func (p *Parser) Parse(modelType reflect.Type) (*TableMetadata, error) {
 }
 ```
 
-The `Kind` loop unwraps `*User` to `User` so callers can pass either. The `Kind`
-check rejects a non-struct with an error instead of a panic. `Fields()` walks
-them, `IsExported` skips `notes`, `Tag.Get("po")` pulls the tag out.
+The `Kind` loop unwraps `*User` to `User`. The `Kind` check returns an error
+instead of panicking. `Fields()` walks, `IsExported` skips `notes`, `Tag.Get`
+reads the tag.
 
-And the cache is keyed by `reflect.Type` — the 537 ns path runs **once per
-model**, ever. Every query after that is the 9.7 ns path. Course 11 wraps this
-map in the `sync.RWMutex` you met last course, because it is read from every
-goroutine at once.
+And the cache is keyed by `reflect.Type`, so the 537 ns path runs **once per
+model, ever** — every query after that is the 9.7 ns path. Course 11 wraps this
+map in the `sync.RWMutex` you built last course.
 
-There is one more detail worth seeing. When the parser records a column it
-stores the struct field index:
-
-```go
-Position: field.Index[0]
-```
-
-The scanner, however, resolves fields by name at scan time:
-
-```go
-field := destValue.FieldByName(col.GoField)
-```
-
-That is the 12× path, once per column per row. Measured on a 1000-row,
-10-column result:
-
-```text
-BenchmarkScan1000RowsByName    390,875 ns/op
-BenchmarkScan1000RowsByIndex    35,260 ns/op
-```
-
-About 356 µs per query spent searching for names the parser already found. Not
-fatal, and not the bottleneck next to a network round trip — but it is a real
-cost, and you will know exactly where it comes from when you write that scanner
-in course 13.
-
-## Exercise
+## Build something
 
 Write the function course 10 begins with:
 
@@ -328,22 +341,20 @@ func Columns(v any) ([]string, error)
 ```
 
 Given any struct — or a pointer to one — return the column names from its `po`
-tags, in field order. The name is everything before the first comma.
+tags in field order. The name is everything before the first comma.
 
-The interesting part is the edge cases, so make each one a test:
+The edge cases are the exercise, so make each one a test:
 
-- a pointer (`&User{}`) works the same as a value
+- a pointer (`&User{}`) behaves like a value
 - an unexported field is skipped, not panicked on
 - a field with no `po` tag is skipped
-- a non-struct (`42`, `"x"`) returns an error rather than panicking
+- a non-struct (`42`, `"x"`) returns an error
+- `Columns(nil)` returns an error rather than panicking
 
-```bash
-cd greet
-go test ./...
-```
+That last one will catch you if you only test the happy path.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself</summary>
 
 ```go
 func Columns(v any) ([]string, error) {
@@ -374,50 +385,27 @@ func Columns(v any) ([]string, error) {
 }
 ```
 
-```go
-func TestColumns(t *testing.T) {
-	want := []string{"id", "email"}
-
-	got, err := Columns(User{})
-	if err != nil || !slices.Equal(got, want) {
-		t.Errorf("Columns(User{}) = %v, %v", got, err)
-	}
-
-	got, err = Columns(&User{})
-	if err != nil || !slices.Equal(got, want) {
-		t.Errorf("Columns(&User{}) = %v, %v", got, err)
-	}
-
-	if _, err := Columns(42); err == nil {
-		t.Error("Columns(42) should error")
-	}
-}
-```
-
-Four details worth the space:
-
-**The pointer unwrap is a loop, not an `if`.** `**User` is legal, and the real
+**The pointer unwrap is a loop, not an `if`** — `**User` is legal, and the real
 parser loops for the same reason.
 
-**`t == nil` is checked.** `reflect.TypeOf(nil)` returns nil, and calling `Kind()`
-on it panics — so a plain `Columns(nil)` would take down the process if you only
-tested the happy path.
+**`t == nil` is checked** because `reflect.TypeOf(nil)` returns nil and calling
+`Kind()` on it is a nil dereference. Try deleting that check and running
+`Columns(nil)`.
 
-**`Lookup`, not `Get`.** An untagged field must be skipped; `Get` cannot tell
-that apart from an empty tag.
+**`Lookup`, not `Get`** — an untagged field must be skipped, and `Get` cannot
+tell that from an empty tag.
 
-**`-` is skipped.** That is the ORM's convention for a field that exists in Go
-but is not a column — relationship fields use it, as you will see in course 12.
+**`-` is skipped**: the ORM's convention for a field that exists in Go but is not
+a column. Relationship fields use it, as you will see in course 12.
 
-The function returns `[]string` and not `[]reflect.StructField` deliberately: the
-caller gets plain data and never has to know reflection was involved. Keeping the
-reflection inside is the same instinct as course 06's generic signature — one
-boundary, crossed once.
+The function returns `[]string`, not `[]reflect.StructField`. The caller gets
+plain data and never learns reflection was involved — the same instinct as course
+06's generic signature. One boundary, crossed once.
 
 </details>
 
 ## Next
 
-Testing. You have been writing tests since course 01, but reflection code is the
-first thing in this course where the compiler stops helping — table-driven tests,
-coverage, fuzzing, and what is actually worth asserting.
+Testing. You have been writing tests since course 01, but reflection is the first
+thing here where the compiler stops helping — so next is table-driven tests,
+coverage, and a fuzzer that will find a bug you cannot see.

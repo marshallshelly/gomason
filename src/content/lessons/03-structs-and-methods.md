@@ -12,169 +12,152 @@ minutes: 40
 draft: false
 ---
 
-Go has no classes. It has structs, which hold data, and methods, which are
-ordinary functions with one extra parameter. That is the whole object model, and
-it is smaller than it sounds — most of this course is one decision you have to
-make every time you write a method, and which everyone gets wrong at least once.
+There is one decision in this course that you will get wrong at least once in
+real code, and it fails silently. We are going to trigger it deliberately in the
+next three minutes so you recognise it later.
 
-The struct is also the unit this entire series is built on. By course 10 a
-struct definition *is* your database schema.
-
-## Defining a struct
+Open your `greet` module and put this in `main.go`:
 
 ```go
-type User struct {
-	ID    int
-	Name  string
-	Email string
-}
-```
+package main
 
-Create one by naming the fields:
+import "fmt"
 
-```go
-u := User{ID: 1, Name: "Ada", Email: "ada@example.com"}
-```
-
-You can also write `User{1, "Ada", "ada@example.com"}` positionally, but do not.
-It compiles today and breaks silently the moment someone reorders the fields.
-Named fields also let you omit any you do not care about — the rest get their
-zero values, as course 02 covered.
-
-Fields follow the same export rule as everything else: `Name` is visible outside
-the package, `name` is not.
-
-## Methods
-
-A method is a function with a **receiver** — the parameter in parentheses before
-the name:
-
-```go
-func (u User) Label() string {
-	return fmt.Sprintf("%s <%s>", u.Name, u.Email)
-}
-```
-
-`u.Label()` now works. There is no `this`, and the receiver is named like any
-other parameter. Convention is one or two letters — a short abbreviation of the
-type, used consistently across every method on that type. Not `self`, not `me`.
-
-Methods can be declared on any named type you define, not just structs:
-
-```go
-type Celsius float64
-
-func (c Celsius) String() string {
-	return fmt.Sprintf("%.1f°C", float64(c))
-}
-```
-
-You cannot declare methods on types from other packages. That restriction is
-what makes Go's type system tractable, and it is why you will occasionally see a
-one-field wrapper type whose only job is to give you somewhere to hang a method.
-
-## The receiver decision
-
-This is the part that matters. A receiver is either a **value** or a
-**pointer**, and the difference is not cosmetic:
-
-```go
 type Counter struct {
-	N int
+	n int
 }
 
-// Value receiver: operates on a copy.
-func (c Counter) IncValue() { c.N++ }
-
-// Pointer receiver: operates on the original.
-func (c *Counter) IncPointer() { c.N++ }
+func (c Counter) Inc() {
+	c.n++
+}
 
 func main() {
 	c := Counter{}
+	c.Inc()
+	c.Inc()
+	c.Inc()
+	fmt.Println(c.n)
+}
+```
 
-	c.IncValue()
-	c.IncValue()
-	fmt.Printf("after two IncValue()   N = %d\n", c.N)
+**Predict the number before you run it.** Three calls to `Inc`.
 
-	c.IncPointer()
-	c.IncPointer()
-	fmt.Printf("after two IncPointer() N = %d\n", c.N)
+```bash
+go run .
+```
+
+```text
+0
+```
+
+Not three. Not a crash. Zero — and no warning from the compiler or from `go vet`.
+
+## The receiver
+
+That `(c Counter)` before the function name is the **receiver**, and it makes
+`Inc` a method on `Counter`. It is an ordinary parameter with an unusual
+position, which means the usual rule applies: **Go passes it by value.** Each
+call got its own copy of the counter, incremented it, and threw it away.
+
+Change one character — add a `*`:
+
+```go
+func (c *Counter) Inc() {
+	c.n++
 }
 ```
 
 ```text
-after two IncValue()   N = 0
-after two IncPointer() N = 2
+3
 ```
 
-`IncValue` did nothing. It incremented a copy that was discarded when the method
-returned. It did not warn you, because it is not an error — you are allowed to
-mutate a copy.
+A pointer receiver gets the address, so the method mutates the original.
 
-This is the single most common bug in early Go code. If a method is supposed to
-change the receiver, the receiver must be a pointer.
-
-### Go takes the address for you
-
-Notice that `c.IncPointer()` worked even though `c` is a value, not a pointer.
-Go rewrites it to `(&c).IncPointer()` automatically. The same happens in
-reverse: a pointer can call a value method, and Go dereferences it.
-
-So the calling syntax is identical either way, which is convenient and also
-exactly why the bug above is so easy to write. You cannot tell from the call
-site which kind of receiver you got.
-
-That automatic address-taking only works on **addressable** values. A map
-element is not addressable, and the compiler is blunt about it:
-
-```go
-m := map[string]Counter{"a": {}}
-m["a"].Inc()
-```
-
-```text
-./main.go:9:9: cannot call pointer method Inc on Counter
-```
-
-The fix is to pull the value out, modify it, and put it back — or, more usually,
-to store `map[string]*Counter` instead.
+Notice what you did *not* have to write: no `(&c).Inc()`, no `c->n`. Go
+automatically takes the address of an addressable value when you call a
+pointer-method on it, and automatically dereferences when you call a
+value-method on a pointer. The call site looks identical either way — which is
+exactly why the bug above is so easy to ship.
 
 ### The rule
 
-Pick a receiver by asking two questions:
+Pick a receiver with these, in order:
 
-1. **Does the method modify the receiver?** If yes, it must be a pointer.
-2. **Is the struct large, or does it contain a lock?** If yes, use a pointer to
-   avoid copying it.
+1. **Does the method modify the receiver?** Then it must be a pointer. No choice.
+2. **Is the struct large, or does it contain a mutex?** Pointer — copying is
+   wasteful, and copying a mutex is a bug that `go vet` will report.
+3. **Otherwise, be consistent.** If any method on the type needs a pointer, use
+   pointers for all of them. Mixed receivers on one type confuse readers and
+   interact badly with interfaces in course 05.
 
-Otherwise either works — and then the real rule takes over: **be consistent
-within a type.** If any method on `User` takes a pointer receiver, give them all
-pointer receivers. Mixing them is legal, confusing, and causes surprises later
-when interfaces get involved (course 05).
+In practice most types end up with pointer receivers. Value receivers are for
+small immutable things — a `Point`, a `Duration`, a wrapper around a string.
 
-The second question is not just about performance. Copying a struct that
-contains a `sync.Mutex` copies the lock, which quietly breaks it. `go vet` knows:
+## Your turn
+
+Here is a method chain that silently loses data. Type it and run it:
 
 ```go
-type Store struct {
-	mu sync.Mutex
-	n  int
+type Query struct {
+	table string
+	where []string
 }
 
-func (s Store) Bad() { s.mu.Lock(); defer s.mu.Unlock(); s.n++ }
+func (q Query) Where(cond string) Query {
+	q.where = append(q.where, cond)
+	return q
+}
+
+func main() {
+	q := Query{table: "users"}
+	q.Where("age > 18")
+	q.Where("active = true")
+	fmt.Println(q.where)
+}
 ```
 
 ```text
-mu.go:10:9: Bad passes lock by value: example.com/shapes.Store contains sync.Mutex
+[]
 ```
 
-Keep running `go vet ./...`. This is exactly the class of mistake it exists for,
-and you will meet it for real in course 11, when the ORM's registry gets a lock.
+Fix it so both conditions land. There are **two** different fixes — one changes
+the receiver, the other changes the call site. Find both, then decide which one
+the ORM's query builder should use, given that you want to write
+`Select[User](db).Where(...).Limit(10)` as a single chain.
+
+<details>
+<summary>Once you have tried both</summary>
+
+The call-site fix keeps value receivers and reassigns:
+
+```go
+q = q.Where("age > 18")
+q = q.Where("active = true")
+```
+
+The receiver fix uses a pointer and returns it so calls can chain:
+
+```go
+func (q *Query) Where(cond string) *Query {
+	q.where = append(q.where, cond)
+	return q
+}
+```
+
+```go
+q.Where("age > 18").Where("active = true")
+```
+
+The ORM uses the second. Every builder method returns `*SelectQuery[T]` so the
+chain accumulates state in one object. Had they been value receivers, the builder
+would discard every clause exactly like `Counter.Inc` — and produce a query that
+runs fine and returns the wrong rows.
+
+</details>
 
 ## Composition, not inheritance
 
-Go has no `extends`. Instead you **embed** one type in another by declaring it
-without a field name:
+Go has no `extends`. You **embed** a type by declaring it with no field name:
 
 ```go
 type Model struct {
@@ -185,26 +168,24 @@ type Model struct {
 func (m Model) Describe() string { return fmt.Sprintf("Model(%d)", m.ID) }
 
 type User struct {
-	Model // embedded: no field name
+	Model
 	Email string
 }
 ```
 
-The embedded type's fields and methods are **promoted** — reachable as if they
-were declared on the outer type:
+**Predict which of these compile:** `u.ID`, `u.Model.ID`, `u.Describe()`.
 
 ```text
-promoted field  u.ID = 1
-still reachable u.Model.Created = "today"
-promoted method u.Describe() = Model(1)
+u.ID         = 1
+u.Model.ID   = 1
+u.Describe() = Model(1)
 ```
 
-`u.ID` works, and `u.Model.ID` still works too. Promotion is a shorthand, not a
-merge.
+All three. The embedded type's fields and methods are **promoted** to the outer
+type, and the long form still works — promotion is a shorthand, not a merge.
 
-This looks like inheritance, so be careful: it is not. If the outer type
-declares a method with the same name, it **shadows** the inner one — but
-nothing dispatches virtually:
+This looks like inheritance. It is not, and the difference matters. Add a type
+that overrides the method:
 
 ```go
 type Admin struct {
@@ -216,89 +197,83 @@ func (a Admin) Describe() string { return fmt.Sprintf("Admin(%d)", a.ID) }
 ```
 
 ```text
-shadowed        a.Describe()       = Admin(2)
-original still  a.Model.Describe() = Model(2)
+a.Describe()       = Admin(2)
+a.Model.Describe() = Model(2)
 ```
 
-Crucially, if `Model` had another method that called `Describe()`, it would call
-**`Model`'s** `Describe`, not `Admin`'s. The inner type has no idea it has been
-embedded. There is no `super`, and no base class reaching down into a subclass.
+`Admin.Describe` shadows the promoted one. But **if a method on `Model` called
+`Describe()`, it would call `Model`'s** — the inner type has no idea it has been
+embedded. There is no virtual dispatch, no `super`, no base class reaching into a
+subclass. When you want that, you use an interface, which is course 05.
 
-If you want that kind of polymorphism, you use an interface — which is course 05.
+Use embedding for what it looks like: sharing a common set of fields, or
+borrowing an implementation. Use a named field (`Model Model`) when the
+relationship is "has a" rather than "is basically a".
 
-Embedding is best used for exactly what it looks like here: sharing a common set
-of fields, or borrowing an implementation. Reach for a named field
-(`Model Model`) whenever the relationship is "has a" rather than "is basically a".
+### One prediction that matters later
+
+`User` has an embedded `Model` with two fields, plus its own `Email`. **How many
+fields does reflection see on `User`?** Run it:
+
+```go
+t := reflect.TypeOf(User{})
+fmt.Println(t.NumField())
+for f := range t.Fields() {
+	fmt.Printf("  %s (%v) anonymous=%t\n", f.Name, f.Type, f.Anonymous)
+}
+```
+
+```text
+2
+  Model (main.Model) anonymous=true
+  Email (string) anonymous=false
+```
+
+**Two, not three.** Promotion is a compile-time convenience; the runtime sees one
+field called `Model`, flagged `Anonymous`.
+
+That is a real design decision waiting for you in course 10. If someone embeds a
+`Model` with an `ID` field, is `ID` a column? Every ORM has to choose whether to
+walk into embedded structs, and now you know why the choice exists.
 
 ## Structs compare with ==
 
-Two structs are equal if every field is equal, provided every field is
-comparable:
-
 ```go
-type Point struct{ X, Y int }
-
-fmt.Println(Point{1, 2} == Point{1, 2})   // true
-fmt.Println(Point{1, 2} == Point{9, 9})   // false
+a := User{Name: "Ada", Age: 36}
+b := User{Name: "Ada", Age: 36}
+fmt.Println(a == b)
 ```
 
-That also makes them usable as map keys:
-
-```go
-m := map[Point]string{{1, 2}: "origin-ish"}
+```text
+true
 ```
 
-But a struct containing a slice, map or function is **not** comparable, and the
-failure is at compile time:
+Field by field, no method to write. Comparable structs also work as **map keys**,
+which is worth remembering.
+
+Now add a slice field and try again:
 
 ```go
 type Tagged struct {
 	Name string
 	Tags []string
 }
-
-fmt.Println(Tagged{"a", nil} == Tagged{"a", nil})
 ```
+
+**Predict: runtime panic, or compile error?**
 
 ```text
-./main.go:11:14: invalid operation: Tagged{…} == Tagged{…} (struct containing []string cannot be compared)
+./main.go:6:9: invalid operation: x == y (struct containing []string cannot be compared)
 ```
 
-Worth knowing before you try to use a struct as a map key and find out the hard
-way. For those, compare field by field, or use `reflect.DeepEqual` in tests.
+Compile error — caught before you ship. A struct is comparable only if every
+field is, and slices, maps and functions are not. This is the same
+`comparable` constraint you will meet in course 06's generics, and the reason
+`registry` in course 11 keys its cache by `reflect.Type` rather than by a struct.
 
-## Why this matters for the ORM
+## Build something
 
-From course 10 onwards, a struct definition is the schema:
-
-```go
-type User struct {
-	ID    string `po:"id,primaryKey,uuid"`
-	Email string `po:"email,varchar(320),unique"`
-}
-```
-
-Those backtick strings are **struct tags** — metadata attached to a field,
-ignored by the compiler, readable at runtime. They are how the ORM learns that
-`Email` maps to a `varchar(320)` column called `email`. Course 08 shows how to
-read them; course 10 turns them into a schema.
-
-Two things from this course carry straight over.
-
-**The receiver decision shows up in the query builder.** Every method on
-`Select[T]` returns a pointer so the chain accumulates state — `.Where(...)`
-has to modify the query, not a copy of it. If those were value receivers, the
-builder would silently discard every clause, exactly like `IncValue` above.
-
-**Embedding raises a question an ORM has to answer.** If you embed a `Model`
-with an `ID` field, is `ID` a column? Promotion says the field is reachable at
-`u.ID`, but reflection over `User`'s fields sees one field named `Model`, not
-three. Any ORM has to decide whether to walk into embedded structs. Keep that in
-mind when you write the parser — it is a real design decision, not an oversight.
-
-## Exercise
-
-Build the beginnings of a schema type:
+Start the type the whole ORM is built around. In your `greet` module:
 
 ```go
 type Column struct {
@@ -312,24 +287,17 @@ type Table struct {
 }
 ```
 
-Write two methods:
+Write two methods and a test:
 
 - `AddColumn(name, typ string)` — appends a column
 - `ColumnNames() []string` — returns just the names
 
-Write the test first. Add two columns, then assert `ColumnNames()` returns both.
-
-```bash
-cd greet
-go test ./...
-```
-
-If your test says you have zero columns after adding two, you have just
-reproduced the bug at the top of this course. Do not fix it by guessing — read
-the receiver.
+**Write the test first.** Add two columns, then assert `ColumnNames()` returns
+both. If your test reports zero columns after adding two, you have reproduced
+the bug from the top of this course — do not guess at the fix, read the receiver.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself</summary>
 
 ```go
 func (t *Table) AddColumn(name, typ string) {
@@ -345,21 +313,21 @@ func (t Table) ColumnNames() []string {
 }
 ```
 
-`AddColumn` **must** take a pointer receiver: it modifies `t.Columns`. With a
-value receiver it appends to a copy and the caller sees nothing.
+`AddColumn` modifies, so it takes a pointer — rule 1, no choice. `ColumnNames`
+only reads, so a value receiver would work.
 
-`ColumnNames` does not modify anything, so a value receiver is defensible — but
-by the consistency rule above, most Go programmers would make it `*Table` too,
-so every method on `Table` matches. Either is fine as long as you can say why.
+By rule 3 you should still make them both pointers. Consistency matters more
+than the micro-optimisation, and the moment `Table` grows a mutex — which it
+does, in course 11 — the value receiver becomes an actual bug that `go vet`
+reports as *"passes lock by value"*.
 
-`make([]string, 0, len(t.Columns))` pre-sizes the slice: length zero, capacity
-enough for every name. That avoids the repeated reallocation you watched happen
-in course 02.
+`make([]string, 0, len(t.Columns))` sets the capacity up front so `append` never
+has to reallocate. Course 02's slice internals, put to use.
 
 </details>
 
 ## Next
 
-You can model data and give it behaviour. Next: what happens when things go
-wrong. Go has no exceptions, and errors are ordinary values you are expected to
-handle in the open.
+Errors. Go has no exceptions — failure is a value you return, check, and wrap.
+It is the convention that shapes every function signature you will write from
+here on.

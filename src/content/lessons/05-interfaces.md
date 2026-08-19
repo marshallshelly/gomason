@@ -2,296 +2,244 @@
 title: "Interfaces"
 part: tools
 order: 5
-summary: "Implicit satisfaction, why small interfaces win, and how io.Reader got everywhere."
+summary: "Implicit satisfaction, small interfaces, and how to test database code without a database."
 topics:
-  - implicit satisfaction
-  - small interfaces
-  - io.Reader
+  - implicit interfaces
+  - method sets
   - type assertions
+  - the nil interface trap
 minutes: 40
 draft: false
 ---
 
-Part two starts here. Everything from now on is a tool you will use directly in
-the ORM, and this is the load-bearing one: it is what lets a query run against a
-connection pool or a transaction without writing the code twice.
-
-An interface is a set of method signatures. Any type with those methods
-satisfies it. That is the whole feature — but the word **implicit** is doing an
-enormous amount of work.
+An interface is a set of method signatures. Any type with those methods satisfies
+it — automatically, with no declaration. That one design choice is why Go code
+composes as well as it does, and it has two sharp edges that this course makes
+you cut yourself on deliberately.
 
 ## Nothing declares that it implements anything
 
+Write this in your `greet` module and run it:
+
 ```go
-type Stringer interface {
-	String() string
+package main
+
+import "fmt"
+
+type Describer interface {
+	Describe() string
 }
 
-type ValueGreeter struct{ Name string }
+type Column struct {
+	Name string
+	Type string
+}
 
-func (g ValueGreeter) String() string { return "value: " + g.Name }
+func (c Column) Describe() string {
+	return fmt.Sprintf("%s %s", c.Name, c.Type)
+}
+
+func main() {
+	var d Describer = Column{Name: "email", Type: "varchar"}
+	fmt.Println(d.Describe())
+}
 ```
 
-`ValueGreeter` now satisfies `Stringer`. There is no `implements` keyword, no
-registration, and — critically — **`ValueGreeter` does not import or know about
-`Stringer` at all**.
+```text
+email varchar
+```
 
-That inversion is the point. In most languages the implementation declares its
-interfaces, so the interface has to exist first and the dependency points from
-implementation to interface. In Go the *consumer* declares what it needs, and
-any pre-existing type can satisfy it retroactively.
+There is no `implements Describer` anywhere. `Column` has a `Describe() string`
+method, so it satisfies the interface — the compiler checks it at the assignment.
 
-The practical consequence: you can define an interface describing exactly what
-your function needs, and types from the standard library — written years before
-your code — will satisfy it without modification.
+The consequence is that **you can define an interface for a type you do not
+own.** In most languages the type must opt in; in Go, the *consumer* declares
+what it needs. That is why the standard library's interfaces work with types
+written years later.
+
+## Predict: does this compile?
+
+Change the receiver to a pointer, and nothing else:
+
+```go
+func (c *Column) Describe() string {
+	return fmt.Sprintf("%s %s", c.Name, c.Type)
+}
+```
+
+The assignment `var d Describer = Column{...}` is unchanged. **Compile error or
+not?**
+
+```text
+cannot use Column{} (value of struct type Column) as Describer value:
+Column does not implement Describer (method Describe has pointer receiver)
+```
+
+**A pointer receiver means only the pointer satisfies the interface.**
+`&Column{}` works; `Column{}` does not. The reverse is fine — a value receiver
+puts the method on both `Column` and `*Column`.
+
+The reason is course 03's rule seen from another angle: a method that can modify
+its receiver is meaningless on a copy, so Go will not let an unaddressable value
+sneak into an interface that promises it.
+
+In practice: **if any method on your type has a pointer receiver, pass pointers
+everywhere.** Fix it with `var d Describer = &Column{...}` and move on.
 
 ## Small interfaces win
 
 The most-used interface in Go has one method:
 
 ```go
-type Reader interface {
-	Read(p []byte) (n int, err error)
+type Writer interface {
+	Write(p []byte) (n int, err error)
 }
 ```
 
-Write a function against `io.Reader` and it works on anything that can produce
-bytes:
+Write a function that takes it:
 
 ```go
-func CountLines(r io.Reader) (int, error) {
-	n := 0
-	s := bufio.NewScanner(r)
-	for s.Scan() {
-		n++
-	}
-	return n, s.Err()
-}
-```
-
-```text
-strings.Reader -> 3 lines
-bytes.Buffer   -> 2 lines
-os.File        -> 4 lines
-```
-
-One function, three unrelated types — a string in memory, a byte buffer, a file
-on disk. Add a network connection, a gzip stream, or an HTTP request body and it
-still works. None of those types were written with `CountLines` in mind.
-
-This is why the Go proverb is **"the bigger the interface, the weaker the
-abstraction."** A one-method interface is satisfied by almost everything; a
-ten-method interface is satisfied by almost nothing, and mocking it in a test is
-miserable. When you are tempted to write a large interface, you usually want a
-struct.
-
-## The receiver decision comes due
-
-Course 03 said to be consistent about value versus pointer receivers, and that
-mixing them causes surprises "when interfaces get involved". Here is the
-surprise.
-
-Three of these four combinations work:
-
-```go
-var s Stringer
-
-s = ValueGreeter{"a"}    // value type, value receiver
-s = &ValueGreeter{"b"}   // pointer,    value receiver
-s = &PointerGreeter{"c"} // pointer,    pointer receiver
-```
-
-```text
- value type, value receiver  -> value: a
- pointer,    value receiver  -> value: b
- pointer,    pointer receiver-> pointer: c
-```
-
-The fourth does not:
-
-```go
-var s Stringer = PointerGreeter{"d"}
-```
-
-```text
-cannot use PointerGreeter{…} (value of struct type PointerGreeter) as Stringer
-value in variable declaration: PointerGreeter does not implement Stringer
-(method String has pointer receiver)
-```
-
-The rule: **a pointer's method set includes both value and pointer receiver
-methods; a value's method set includes only value receiver methods.**
-
-Why the asymmetry? Given a pointer, Go can always dereference it to call a value
-method. Given a value, it would have to take its address to call a pointer
-method — and not every value is addressable, as course 03 showed with map
-elements. Rather than have it work sometimes, the language says no.
-
-In practice: **if any method on your type has a pointer receiver, store and pass
-`*T`, not `T`.** This is the concrete reason for the consistency rule.
-
-## Asking what is inside
-
-An interface value holds two things: a **type** and a **value**. Sometimes you
-need to look.
-
-A type assertion, in the comma-ok form so it does not panic:
-
-```go
-if s, ok := v.(string); ok {
-	fmt.Println("a string:", s)
-}
-```
-
-A type switch, when there are several possibilities:
-
-```go
-func describe(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return "nil"
-	case int:
-		return fmt.Sprintf("int %d", x)
-	case string:
-		return fmt.Sprintf("string %q (len %d)", x, len(x))
-	case []int:
-		return fmt.Sprintf("slice of %d ints", len(x))
-	case error:
-		return "an error: " + x.Error()
-	default:
-		return fmt.Sprintf("something else: %T", x)
-	}
-}
-```
-
-```text
-  nil
-  int 42
-  string "hi" (len 2)
-  slice of 2 ints
-  an error: boom
-  something else: float64
-```
-
-Note that `case error` matches anything satisfying the interface, and `x` is
-typed differently in each branch — `int` in one, `string` in another. `any` is
-an alias for `interface{}`: the empty interface, satisfied by every type.
-
-Reach for these sparingly. A type switch over concrete types is often a sign
-that the interface should have had a method instead. `errors.As` from course 04
-is a type assertion with the unwrapping built in, and is the right tool for
-errors.
-
-## The nil that is not nil
-
-This one has bitten every Go programmer at least once, and it follows directly
-from an interface holding *two* words.
-
-```go
-type NotFoundError struct{ Key string }
-
-func (e *NotFoundError) Error() string { return "not found: " + e.Key }
-
-func buggy() error {
-	var e *NotFoundError
-	return e
-}
-```
-
-```text
-buggy():   err == nil ? false
-           but the pointer inside IS nil
-           errors.As finds it: true, and it is <nil>
-```
-
-`err == nil` is **false**. The interface holds the *type* `*NotFoundError` and
-the *value* `nil`, and an interface is only equal to `nil` when **both** are
-absent. Every caller doing `if err != nil` now takes the error branch, and then
-often panics dereferencing a nil pointer.
-
-`go vet` does not catch this. I checked.
-
-The fix is to never return a typed nil pointer as an interface:
-
-```go
-func correct() error {
-	var e *NotFoundError
-	if e != nil {
-		return e
+func WriteSchema(w io.Writer, cols []string) error {
+	for _, c := range cols {
+		if _, err := fmt.Fprintf(w, "  %s\n", c); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 ```
 
-```text
-correct(): err == nil ? true
-```
-
-The practical rule: **declare error-returning functions as returning `error`,
-and return the literal `nil`** — never a concrete pointer variable that happens
-to be nil. If you find yourself with a `*MyError` you might return, check it
-first.
-
-## Accept interfaces, return structs
-
-The most useful piece of Go design advice, and it falls out of everything above:
-
-- **Accept interfaces** in your parameters, so callers can pass whatever they
-  have — including a fake in a test.
-- **Return concrete types**, so callers get every method, not the subset some
-  interface happened to name.
-
-And define the interface **in the package that consumes it**, not the one that
-implements it. That is the inversion from the top of this course, used
-deliberately: the consumer states its requirement, and implementations satisfy
-it without ever importing the consumer.
-
-## Why this matters for the ORM
-
-Here is the real interface from the ORM you are building, in full:
+Now call it three ways and run:
 
 ```go
-type queryExecutor interface {
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Exec(ctx context.Context, sql string, args ...interface{}) (int64, error)
+WriteSchema(os.Stdout, cols)
+
+var buf bytes.Buffer
+WriteSchema(&buf, cols)
+
+var sb strings.Builder
+WriteSchema(&sb, cols)
+```
+
+```text
+  id
+  email
+captured 13 bytes: "  id\n  email\n"
+also works with strings.Builder: 2 lines
+```
+
+One function, and it writes to a terminal, an in-memory buffer, a file, a network
+connection, or a gzip stream — none of which it knows about. **The buffer version
+is a test**: you called the real function and captured its output with no files
+and no mocking library.
+
+That is the whole trick this course exists to teach. Note the direction of the
+dependency: `WriteSchema` did not have to anticipate `bytes.Buffer`, and
+`bytes.Buffer` did not have to anticipate `WriteSchema`.
+
+Keep interfaces small. One or two methods is normal; the Go proverb is *"the
+bigger the interface, the weaker the abstraction."* A ten-method interface has
+exactly one implementation and buys you nothing.
+
+## Asking what is inside
+
+A **type assertion** pulls the concrete value back out. Always use the two-value
+form, which cannot panic:
+
+```go
+if c, ok := d.(Column); ok {
+	fmt.Println(c.Name)
 }
 ```
 
-Three methods. Its entire job is to answer one question: *can I run SQL on this?*
-
-A connection pool can. A transaction can. They are different types from a
-third-party library, with no common ancestor, and you cannot add methods to
-either — course 03 established you can only define methods on types from your
-own package.
-
-Because satisfaction is implicit, the pool satisfies this **as it already is**.
-The transaction needs a thin adapter, because its `Exec` returns a different
-type:
+A **type switch** handles several:
 
 ```go
-type txExecutor struct{ tx pgx.Tx }
+switch v := value.(type) {
+case string:
+	return fmt.Sprintf("%q", v)
+case int, int64:
+	return fmt.Sprint(v)
+case nil:
+	return "NULL"
+default:
+	return fmt.Sprintf("unsupported: %T", v)
+}
 ```
 
-That is the entire abstraction. Every query builder — select, insert, update,
-delete — takes a `queryExecutor` and stops caring whether it is talking to a
-pool or a transaction.
+That shape is how an ORM turns a Go value into a SQL literal, and `%T` in the
+default case is what makes the failure debuggable.
 
-Without it, the ORM had two parallel copies of every builder: one for the pool,
-one for transactions. They drifted, as duplicated code does — the transaction
-path silently lost a feature that the pool path had gained, and nobody noticed
-until someone went looking. One three-method interface deleted both the
-duplication and that entire class of bug.
+Reach for these sparingly. Needing to know the concrete type usually means the
+interface is wrong.
 
-That is what a good interface buys. Not abstraction for its own sake — one
-fewer copy of the truth.
+## Your turn: the nil that is not nil
 
-## Exercise
+Type this exactly and predict the output:
 
-Interfaces are what make code testable without a database, so practise exactly
-that shape.
+```go
+type MyErr struct{}
 
-Define a one-method interface and a function that accepts it:
+func (e *MyErr) Error() string { return "boom" }
+
+func mightFail() error {
+	var p *MyErr    // nil pointer
+	return p        // returned as an error interface
+}
+
+func main() {
+	err := mightFail()
+	fmt.Println("err == nil?", err == nil)
+}
+```
+
+**It returned a nil pointer. Is `err == nil` true?**
+
+```text
+err == nil? false
+```
+
+An interface value is a **pair**: a type and a value. `err` holds *type
+`*MyErr`, value nil* — and a pair with a type in it is not the nil interface,
+which is *no type, no value*. So `if err != nil` fires and the caller handles a
+failure that never happened.
+
+This is Go's most notorious gotcha, and the fix is a habit rather than a
+technique: **never declare a typed nil and return it as an interface.** Return
+the literal `nil`:
+
+```go
+func mightFail() error {
+	if somethingWrong {
+		return &MyErr{}
+	}
+	return nil
+}
+```
+
+Now make it fail for real — call `err.Error()` on that non-nil error holding a
+nil pointer, and see which line panics. That is the shape of the 3am page this
+rule prevents.
+
+## Accept interfaces, return structs
+
+The guideline worth internalising:
+
+**Accept interfaces** in parameters, so callers can pass whatever they have —
+including a fake in a test. **Return concrete types**, so callers get every
+method and are not boxed in by the narrow view you happened to pick.
+
+Returning an interface also hides the nil trap above inside your API, where your
+callers cannot see it.
+
+One more rule: **define the interface where it is used, not where it is
+implemented.** The consumer knows what it needs. A package that exports an
+interface nobody consumes has guessed at an abstraction instead of discovering
+one.
+
+## Build something
+
+Practise the exact shape that makes the ORM testable.
 
 ```go
 type Fetcher interface {
@@ -301,22 +249,15 @@ type Fetcher interface {
 func Describe(f Fetcher, id int) string
 ```
 
-`Describe` should return `"user: <name>"` on success, and `"unknown user"` if
-`Fetch` returns an error.
+`Describe` returns `"user: <name>"` on success and `"unknown user"` if `Fetch`
+returns an error.
 
-Then write a test with a **fake** `Fetcher` — a small struct in your test file
-that returns whatever you tell it. No database, no network, no mocking library.
-
-```bash
-cd greet
-go test ./...
-```
-
-Write the fake's method with a value receiver and pass the struct directly. If
-you get a compile error about method sets, re-read the receiver section above.
+Then test it with a **fake** — a small struct in your test file that returns
+whatever you tell it. No database, no network, no mocking library. If you find
+yourself wanting one, the interface is too big.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself</summary>
 
 ```go
 func Describe(f Fetcher, id int) string {
@@ -339,39 +280,39 @@ func (f fakeFetcher) Fetch(int) (string, error) { return f.name, f.err }
 func TestDescribe(t *testing.T) {
 	tests := []struct {
 		name    string
-		fetcher fakeFetcher
+		fetcher Fetcher
 		want    string
 	}{
-		{"found", fakeFetcher{name: "Ada"}, "user: Ada"},
-		{"missing", fakeFetcher{err: errors.New("nope")}, "unknown user"},
+		{"success", fakeFetcher{name: "Ada"}, "user: Ada"},
+		{"failure", fakeFetcher{err: errors.New("nope")}, "unknown user"},
 	}
 
 	for _, tt := range tests {
-		if got := Describe(tt.fetcher, 1); got != tt.want {
-			t.Errorf("%s: Describe() = %q, want %q", tt.name, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Describe(tt.fetcher, 1); got != tt.want {
+				t.Errorf("Describe() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 ```
 
-`Fetch(int)` omits the parameter name — legal, and idiomatic when the
-implementation ignores the argument. It documents that the fake does not care
-which id you ask for.
+The fake is six lines and no dependency. That is what a one-method interface
+buys you — the reason to keep them small is not elegance, it is that a
+twenty-method interface makes this fake unwritable.
 
-The fake is nine lines and lives in the test file. That is the whole point of
-accepting an interface: no mocking framework, no dependency injection
-container, just a struct that answers the one question your code asks.
+`func (f fakeFetcher) Fetch(int) (string, error)` omits the parameter name
+because the fake ignores it. Legal, and it documents that the argument does not
+matter here.
 
-This is also your first **table-driven test** — the loop over a slice of cases.
-Course 09 makes it the default.
+`fakeFetcher` is a value receiver, so both `fakeFetcher{}` and `&fakeFetcher{}`
+satisfy `Fetcher` — the rule from the top of this course, chosen deliberately so
+the table can hold plain values.
 
 </details>
 
 ## Next
 
-Interfaces let one function work with many types, as long as those types share
-methods. But how do you write a function that works with `int` and `string` —
-types with no methods at all — and still get a typed result back?
-
-That is generics, and it is what makes `Select[User]` return `[]User` instead of
-`[]any`.
+Generics. Interfaces let one function serve many types that share methods;
+generics let one function serve many types that share nothing, and still hand
+back a real typed result. It is what makes `Select[User]` return `[]User`.

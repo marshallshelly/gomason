@@ -14,85 +14,64 @@ minutes: 25
 draft: false
 ---
 
-By the end of this course you will have a Go module on disk, a program that runs,
-a test that passes, and a working understanding of the six commands you will type
-for the rest of the series. No ORM yet. Just the ground.
+By the end of this page you will have a Go module on your disk with a passing
+test in it. Everything after this course builds on that folder, so do it now
+rather than reading ahead.
 
-The Go toolchain is unusually small. There is no separate build tool, no
-formatter to choose, no test runner to install, no linter config to argue about.
-That is the whole point, and it is worth ten minutes to see the shape of it
-before we build anything.
+You need a terminal and a text editor. That is the whole setup.
 
 ## Install Go
 
-Download it from [go.dev/dl](https://go.dev/dl/), or use a package manager:
+Grab it from [go.dev/dl](https://go.dev/dl/), or use a package manager:
 
 ```bash
-# macOS
 brew install go
-
-# Debian / Ubuntu
-sudo apt install golang-go
-
-# Windows
-winget install GoLang.Go
 ```
 
-Check it worked:
+Check it took:
 
 ```bash
 go version
 ```
 
 ```text
-go version go1.26.5 darwin/arm64
+go version go1.26.6 darwin/arm64
 ```
 
-Anything from 1.22 onwards will do for this course. We use generics heavily from
-course 06 onwards, which landed in 1.18.
-
-You do **not** need to set `GOPATH`. You may find blog posts insisting that you
-put all your code in `~/go/src` — those predate modules, which arrived in Go 1.11
-and became the default in 1.16. Your code can live anywhere now.
+Any Go 1.22 or newer will work for this course. If the command is not found,
+your shell cannot see Go's `bin` directory — the install page has the fix for
+your platform.
 
 ## Start a module
 
-Make a directory and initialise a module in it:
+Every Go project is a module, and a module is a folder with a `go.mod` in it:
 
 ```bash
 mkdir greet && cd greet
 go mod init example.com/greet
 ```
 
-```text
-go: creating new go.mod: module example.com/greet
-```
+**Before you look — what do you think is in `go.mod`?** Most build tools would
+have written a manifest with a version, a name, a licence, a scripts block.
 
-That created one file:
+```bash
+cat go.mod
+```
 
 ```text
 module example.com/greet
 
-go 1.26.5
+go 1.26
 ```
 
-A **module** is a collection of packages versioned together. The line
-`module example.com/greet` is the module path, and it is the prefix other code
-uses to import yours.
+Two lines. `example.com/greet` is the module path — the prefix other code would
+use to import yours. Nothing on the internet is contacted and nothing is
+downloaded. If you plan to publish, use the real location
+(`github.com/yourname/greet`); otherwise `example.com/anything` is fine.
 
-The module path is not a URL that gets fetched — nothing dials
-`example.com` — but it should be one you could own, because if you ever publish
-the module, that is where Go will look. For real projects use the repository
-you will push to:
+Keep this folder. Courses 02 through 09 all add files to it.
 
-```bash
-go mod init github.com/yourname/greet
-```
-
-For throwaway work, `example.com/anything` is conventional and deliberately
-unownable.
-
-## Write something
+## Write something, run it
 
 Create `main.go`:
 
@@ -101,71 +80,61 @@ package main
 
 import "fmt"
 
-func main() {
-	fmt.Println(Greet("world"))
-}
-
 func Greet(name string) string {
 	return fmt.Sprintf("Hello, %s!", name)
 }
+
+func main() {
+	fmt.Println(Greet("Ada"))
+}
 ```
-
-Three things are already worth naming.
-
-`package main` is special: it tells Go this package builds into an executable
-rather than a library, and that executable starts at `func main()`. Every other
-package you write in this course will have a different name and will not have a
-`main` function.
-
-`Greet` is capitalised, and that is not a style choice. In Go, an identifier
-starting with an uppercase letter is **exported** — visible outside its package.
-Lowercase means package-private. There is no `public` or `private` keyword;
-the case of the first letter is the access control. We will lean on this hard
-when designing the ORM's packages.
-
-The tab indentation is not a preference either. We will get to that in a moment.
-
-## Run it
 
 ```bash
 go run .
 ```
 
 ```text
-Hello, world!
+Hello, Ada!
 ```
 
-`go run .` compiles the package in the current directory to a temporary location
-and executes it. The `.` matters: `go run main.go` also works here, but it only
-compiles the files you name, so it breaks the moment your package spans several
-files. Get in the habit of `go run .` now.
+`go run .` compiles the package in the current directory and runs it, leaving no
+binary behind. The `.` matters — it means "this directory", and you will use it
+constantly.
 
-## Build it
+`package main` plus a `func main()` is what makes a package executable. Any other
+package name produces a library instead, which is what course 02 onward will be
+writing.
 
-```bash
-go build -o greet .
-./greet
+## Your turn: break it on purpose
+
+Go's compiler is stricter than you expect, and its error messages are good. Find
+out how strict. Add this function to `main.go` and run `go run .`:
+
+```go
+func broken() {
+	var n int = "hello"
+	unused := 5
+}
 ```
+
+**Predict how many errors you get.** There are two obvious problems — is the
+unused variable one of them?
 
 ```text
-Hello, world!
+./main.go:4:6:  declared and not used: n
+./main.go:4:14: cannot use "hello" (untyped string constant) as int value
+./main.go:5:2:  declared and not used: unused
 ```
 
-`go build` produces a real binary in your directory. Note the size:
+Three. **An unused local variable is a compile error in Go, not a warning.** So
+is an unused import. Coming from almost any other language this feels aggressive
+for about a week, and then you notice you have stopped accumulating dead code.
 
-```bash
-ls -lh greet
-```
-
-That binary is around 2.5 MB, and it has no dependencies — not even a C library
-in most cases. You can copy it to another machine of the same OS and
-architecture and it runs. This is a large part of why Go is used for
-command-line tools and servers, and it is why the `pebble` CLI you build later
-ships as a single file.
+Delete `broken` before moving on.
 
 ## Test it
 
-Go has a test runner built in. Create `greet_test.go`:
+Go has a test runner built in — no framework to install. Create `greet_test.go`:
 
 ```go
 package main
@@ -174,120 +143,115 @@ import "testing"
 
 func TestGreet(t *testing.T) {
 	got := Greet("Ada")
-	want := "Hello, Ada!"
+	want := "Hi, Ada!"
 	if got != want {
 		t.Errorf("Greet(%q) = %q, want %q", "Ada", got, want)
 	}
 }
 ```
 
-The rules are conventions, enforced by the tool:
-
-- the file must end in `_test.go`
-- the function must start with `Test` and take `*testing.T`
-
-Run it:
+That `want` is deliberately wrong. **Run it and read the failure before you fix
+it** — you will be reading these for the rest of the course:
 
 ```bash
 go test ./...
 ```
 
 ```text
-ok  	example.com/greet	0.471s
-```
-
-The `./...` means "this directory and everything under it". You will type it
-constantly.
-
-Break it on purpose — change `want` to `"Hi, Ada!"` — and look at the failure:
-
-```text
 --- FAIL: TestGreet (0.00s)
     greet_test.go:9: Greet("Ada") = "Hello, Ada!", want "Hi, Ada!"
 FAIL
-FAIL	example.com/greet	0.447s
-FAIL
 ```
 
-There is no assertion library here and you will not need one. `t.Errorf` with
-`%q` — which quotes strings and makes trailing whitespace visible — covers most
-of what an assertion library would give you. Course 09 goes deeper on testing;
-this is enough to check your own work until then.
+The message is whatever you wrote in `t.Errorf`. Go ships no assertion library,
+so the convention is to print **got and want** in that order, with `%q` so empty
+strings and stray whitespace are visible.
 
-Put `want` back.
+Now change `want` to `"Hello, Ada!"` and run again:
+
+```text
+ok  	example.com/greet	0.471s
+```
+
+Red, then green. That loop is the one you will repeat in every remaining course.
 
 ## Format it
 
-Go ships one formatter and there is nothing to configure. Write something ugly:
+Go does not have a style debate. Mangle the spacing in `main.go` — put spaces
+inside the parens, drop the indentation, remove the space after a comma:
 
 ```go
-package main
-
-func messy(  a int,b string ) string {
-if a>0 {
-return b
-}
-return ""
+func Greet( name string ) string {
+return fmt.Sprintf("Hello, %s!",name)
 }
 ```
 
-Then:
+Ask which files are badly formatted, then fix them:
 
 ```bash
-gofmt -w messy.go
+gofmt -l .     # lists files that need changing
+gofmt -w .     # rewrites them in place
 ```
 
 ```go
-package main
-
-func messy(a int, b string) string {
-	if a > 0 {
-		return b
-	}
-	return ""
+func Greet(name string) string {
+	return fmt.Sprintf("Hello, %s!", name)
 }
 ```
 
-Tabs for indentation, spaces around binary operators, no space inside
-parentheses. You do not get a vote, and that is the feature: no Go project has
-ever had a formatting argument in code review.
-
-`gofmt -l .` lists files that need formatting without changing them, which is
-what you would run in CI:
-
-```bash
-gofmt -l .
-```
-
-```text
-messy.go
-```
-
-Set your editor to run `gofmt` on save and then forget it exists.
+Tabs, not spaces. Nobody chose that and nobody can change it, which is the
+feature — every Go codebase you ever open is formatted identically. Set your
+editor to run `gofmt` on save and forget it exists.
 
 ## Vet it
 
-`go vet` catches mistakes the compiler allows but which are almost certainly
-wrong. The classic example is a format string that does not match its arguments:
+Add a deliberate mistake to `main`:
 
 ```go
-name := "Ada"
-fmt.Printf("Hello, %d!\n", name)
+fmt.Printf("%d\n", "not a number")
 ```
 
-This compiles — `Printf` takes `...any`, so the compiler has nothing to object
-to. It just prints garbage. `go vet` knows better:
+**Predict: does `go run .` fail?** A `%d` verb with a string argument.
+
+```text
+Hello, Ada!
+%!d(string=not a number)
+```
+
+It compiles and runs, printing garbage. `Printf` takes `...any`, so the compiler
+has nothing to object to. This is what `go vet` is for:
 
 ```bash
 go vet ./...
 ```
 
 ```text
-vetbug.go:7:21: fmt.Printf format %d has arg name of wrong type string
+main.go:11:13: fmt.Printf format %d has arg "not a number" of wrong type string
 ```
 
-Run `go vet ./...` before you commit. It is fast, it has almost no false
-positives, and it is already installed.
+**Vet catches what compiles but is probably wrong.** Format strings, unreachable
+code, mutexes copied by value, lost context cancellations. It is fast, it has
+almost no false positives, and `go test` runs a subset of it automatically. Run
+the full thing before you commit.
+
+Remove the bad `Printf` line.
+
+## Build it
+
+To ship a real binary:
+
+```bash
+go build -o greet .
+./greet
+```
+
+```text
+Hello, Ada!
+```
+
+One self-contained executable with the runtime baked in — around 2 MB, no
+interpreter, no `node_modules`. Copy it to another machine of the same
+OS and architecture and it runs.
 
 ## The six commands
 
@@ -302,33 +266,25 @@ That is the whole toolchain for this course:
 | `gofmt -w .` | Format code in place |
 | `go vet ./...` | Report likely mistakes |
 
-Two more worth knowing when you meet them: `go get` adds a dependency (course
-13, when we add pgx), and `go doc <pkg>` prints documentation in your terminal
-without opening a browser — try `go doc fmt.Printf`.
+Two more for later: `go get` adds a dependency (course 13, when we add pgx), and
+`go doc` prints documentation in your terminal — try `go doc fmt.Printf` now.
 
-## Exercise
+## Build something
 
-You already have everything you need to do this: the `greet` module you built
-above is a real Go project on your disk. There is nothing to install and no
-sandbox to open — you edit the files and run one command.
+Make `Greet("")` return `"Hello, stranger!"` instead of `"Hello, !"`.
 
-Extend `Greet` so that an empty name produces `"Hello, stranger!"` rather than
-`"Hello, !"`. Add a second test case for it.
-
-Write the test **first** and watch it fail before you make it pass:
+Write the test **first**, watch it fail, then fix the function:
 
 ```bash
-cd greet
 go test ./...   # red
-# ...now edit Greet
 go test ./...   # green
 ```
 
-Every course from here ends with tests, and getting used to reading a red
-failure now will save you time later.
+Then run `gofmt -l .` and `go vet ./...` over your work. Getting into that habit
+now costs nothing; discovering it in course 09 costs you a rewrite.
 
 <details>
-<summary>One way to do it</summary>
+<summary>Check yourself once it passes</summary>
 
 ```go
 func Greet(name string) string {
@@ -349,13 +305,14 @@ func TestGreetEmpty(t *testing.T) {
 }
 ```
 
-Course 09 shows how to collapse these two near-identical tests into one
-table-driven test, which is the idiom you will see in real Go code.
+You now have two tests that are the same five lines with different values. That
+duplication is the setup for course 09, where one table-driven test replaces
+both — the idiom you will see throughout real Go code.
 
 </details>
 
 ## Next
 
-You have a module, a binary, a passing test, and a formatter that will never
-ask your opinion. Next we look at Go's type system — starting with the fact
-that Go has no `null`, and what it does instead.
+You have a module, a binary, a passing test, and a formatter that will never ask
+your opinion. Next: Go's type system — starting with the fact that there is no
+`null`, and what happens instead when you declare a variable and walk away.

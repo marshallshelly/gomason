@@ -293,15 +293,14 @@ func (q *SelectQuery[T]) All(ctx context.Context) ([]T, error)
 ```
 
 That is your `Query[T]`. Until Go 1.27 it was not a style choice at all — the
-language forced it, as the error above showed. The ORM was designed under that
-constraint and still declares `go 1.26`, so the package-function form is what it
-ships.
+language forced it, as the error above showed, and that is why the ORM ships the
+package-function form.
 
-Generic methods now make `qb.Select[User]()` expressible, which is a genuinely
-nicer call site. Whether an established library should take it is a real
-trade-off rather than an obvious win: it is a breaking API change, and it raises
-the minimum Go version for everyone who depends on you. Worth knowing that the
-constraint moved; worth being unhurried about acting on it.
+Generic methods now make `qb.Select[User]()` expressible, and it is a genuinely
+nicer call site. But an established library changing shape is a breaking change
+for every caller, so "the language now allows it" and "we should do it" are
+different questions. Worth knowing the constraint moved; worth being unhurried
+about acting on it.
 
 The payoff is the last line: `All` returns `([]T, error)`, so
 

@@ -174,7 +174,7 @@ func useIt() { _ = Empty() }
 You supply it by hand: `Empty[User]()`. Hold on to that shape — it is exactly
 what `Select[User](db)` is doing, and why you must always name the type there.
 
-## Your turn: the wall you will hit
+## Your turn: the wall, and when it moved
 
 Try to write the API you actually want:
 
@@ -184,19 +184,44 @@ type DB struct{}
 func (db *DB) Select[T any]() []T { return nil }
 ```
 
-**Predict the error.**
+**Predict what happens.** The answer depends on your Go version, which is the
+interesting part.
+
+Before Go 1.27, that was a hard syntax error — a method could *use* its
+receiver's type parameters but never introduce its own:
 
 ```text
 ./bad.go:5:21: syntax error: method must have no type parameters
 ```
 
-A method may **use** its receiver's type parameters but cannot introduce its own.
-So `db.Select[User]()` is not expressible in Go, at all.
+**Go 1.27 added generic methods**, so it now compiles. If your `go.mod` says
+anything earlier, you get a version gate instead, and the compiler names the fix:
 
-Work around it: put the type parameter on a **struct**, and use a package-level
-**function** to construct it. Build this yourself before reading on — a
-`Query[T]` type with a `Limit` method that chains, and an `All` method returning
-`[]T`.
+```text
+generic method requires go1.27 or later (-lang was set to go1.26; check go.mod)
+```
+
+Two restrictions survive, and they still matter:
+
+```text
+interface method must have no type parameters
+```
+
+An interface method cannot declare type parameters, and a generic method cannot
+implement a non-generic interface method. So generics still do not compose with
+interfaces the way you might hope.
+
+### Build the shape anyway
+
+Whatever your Go version, build the pattern the ORM uses — a type parameter on a
+**struct**, constructed by a package-level **function**:
+
+a `Query[T]` type with a `Limit` method that chains, and an `All` method
+returning `[]T`.
+
+It is worth building even on Go 1.27, because it is what the ORM you are working
+toward actually does, and because it works on every Go version your users might
+have.
 
 <details>
 <summary>Compare with yours</summary>
@@ -267,8 +292,16 @@ func (q *SelectQuery[T]) Where(condition Condition) *SelectQuery[T]
 func (q *SelectQuery[T]) All(ctx context.Context) ([]T, error)
 ```
 
-That is your `Query[T]`, and it is not a style choice — **the language forces
-it**, as you proved with the compile error above.
+That is your `Query[T]`. Until Go 1.27 it was not a style choice at all — the
+language forced it, as the error above showed. The ORM was designed under that
+constraint and still declares `go 1.26`, so the package-function form is what it
+ships.
+
+Generic methods now make `qb.Select[User]()` expressible, which is a genuinely
+nicer call site. Whether an established library should take it is a real
+trade-off rather than an obvious win: it is a breaking API change, and it raises
+the minimum Go version for everyone who depends on you. Worth knowing that the
+constraint moved; worth being unhurried about acting on it.
 
 The payoff is the last line: `All` returns `([]T, error)`, so
 

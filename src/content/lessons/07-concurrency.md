@@ -63,6 +63,19 @@ Put `go` in front of a call and it runs concurrently. `sync.WaitGroup` counts
 them: `Add` before starting, `Done` when finished (deferred, so it runs even on
 panic), `Wait` blocks until zero.
 
+Since **Go 1.25** there is a shorthand that does all three:
+
+```go
+wg.Go(func() {
+	results[i] = i * i
+})
+```
+
+`wg.Go` handles the `Add`, starts the goroutine, and defers the `Done`. Prefer it
+for new code — the three-line form is what you will meet in existing codebases,
+and forgetting the `Done` is a classic way to hang forever. `go fix` will convert
+the old form for you.
+
 Goroutines are genuinely cheap. Try it — start a hundred thousand:
 
 ```go
@@ -241,7 +254,28 @@ fatal error: all goroutines are asleep - deadlock!
 
 The runtime noticed every goroutine was blocked forever. Useful — but note it
 only fires when *all* of them are stuck. A leak in one corner of a live server
-goes undetected, which is why goroutine leaks are their own category of bug.
+keeps the process alive and healthy-looking while goroutines pile up.
+
+**Go 1.27 added a profile for exactly that.** Leak three goroutines on a channel
+nobody will ever send to, then ask for them:
+
+```go
+p := pprof.Lookup("goroutineleak")
+p.WriteTo(os.Stdout, 1)
+```
+
+```text
+goroutineleak profile: total 3
+3 @ 0x102d93f18 0x102d2f0b0 0x102d2ec34
+#	main.leak.func1+0x23	.../main.go:14
+```
+
+Three leaks, and the exact line each one is blocked on. It works by asking the
+garbage collector which blocking primitives have become unreachable — so a
+goroutine parked on a channel that no live code can still reach is provably
+stuck. It cannot catch everything (a channel held in a global stays reachable, so
+that leak is invisible to it), but it turns a whole class of invisible bug into a
+named line number. The same data is served at `/debug/pprof/goroutineleak`.
 
 ## select and context
 

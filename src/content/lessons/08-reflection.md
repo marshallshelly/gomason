@@ -106,7 +106,7 @@ Temp   exported=true  tag=""                           found=false
 notes  exported=false tag=""                           found=false
 ```
 
-`Fields()` is an iterator added in Go 1.25 and is what the ORM uses; the older
+`Fields()` is an iterator added in Go 1.26 and is what the ORM uses; the older
 `for i := range t.NumField()` with `t.Field(i)` does the same thing when you need
 the index.
 

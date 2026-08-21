@@ -38,9 +38,20 @@ go version
 go version go1.26.6 darwin/arm64
 ```
 
-Any Go 1.22 or newer will work for this course. If the command is not found,
-your shell cannot see Go's `bin` directory — the install page has the fix for
-your platform.
+**Go 1.26 or newer** is needed for this course — course 08 uses an iterator that
+landed in 1.26. If the command is not found, your shell cannot see Go's `bin`
+directory; the install page has the fix for your platform.
+
+That version number is easy to get wrong, and Go now checks it for you. If your
+`go.mod` claims an older version than the standard library you actually call,
+`go build` says nothing but vet does:
+
+```text
+reflect.(Type).Fields requires go1.26 or later (file is go1.23)
+sync.(*WaitGroup).Go requires go1.25 or later (file is go1.23)
+```
+
+That is the `stdversion` check, and since Go 1.27 `go test` runs it for you.
 
 ## Start a module
 

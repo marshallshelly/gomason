@@ -287,7 +287,7 @@ Most of the ORM needs no database, and that is a design decision. The query
 builders expose:
 
 ```go
-func (q *SelectQuery[T]) ToSQL() (string, []interface{}, error)
+func (q *SelectQuery[T]) ToSQL() (string, []any, error)
 ```
 
 Building the SQL is separated from running it, so column quoting, placeholder

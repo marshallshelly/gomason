@@ -149,10 +149,18 @@ Unquote:
 ```
 
 This ORM gets it wrong. Both tag sites in `pkg/loader` use
-`strings.Trim(field.Tag.Value, "`")`, so a double-quoted tag drops the column
-from CLI-generated migrations while the runtime sees it normally. Nobody writes
-tags that way on purpose — you would have to escape every quote — which is
-exactly why it survived.
+`strings.Trim(field.Tag.Value, "`")`. Run the real loader over that struct and
+the column is simply absent:
+
+```text
+loader registered 1 table(s)
+table "odds" columns:
+  a    sql=text
+```
+
+One column, not two. `b` is gone from every CLI-generated migration while the
+runtime sees it normally. Nobody writes tags that way on purpose — you would
+have to escape every quote — which is exactly why it survived.
 
 ## What the AST cannot know
 
@@ -198,17 +206,46 @@ B  nullable=false      <-- same type
 C  nullable=true
 ```
 
-`stdsql.NullString` and `sql.NullString` are the identical type. The AST matched
-the *qualifier*, not the type, so aliasing the import produces a `NOT NULL`
-column from the CLI and a nullable one at runtime.
+`stdsql.NullString` and `sql.NullString` are the identical type. The function
+matched the *qualifier*, not the type.
+
+Now run the **real loader** over that model and see whether it matters:
+
+```text
+a  nullable=true
+b  nullable=true       <-- correct, despite the above
+c  nullable=true
+```
+
+It does not. The column is nullable anyway, because nullability is decided by
+default rather than by the Go type:
+
+```go
+column.Nullable = !opts.Has("notNull") && !opts.Has("primaryKey")
+if fm.Nullable {
+	column.Nullable = true
+}
+```
+
+A column is nullable **unless the tag says otherwise**, and the Go type can only
+force it *on*, never off. So `astNullable` returning the wrong answer is masked —
+right up until the tag contradicts the type:
+
+```text
+d  sql.NullString    + notNull -> nullable=true    (the Go type wins)
+e  stdsql.NullString + notNull -> nullable=false   <-- diverges
+```
+
+Reflection says `true` for both, because it sees the real type whatever the
+import is called. So the bug is real and it is **one corner wide**: an aliased
+`database/sql` plus an explicit `notNull` on the same field.
 
 The fix is available — `parser.ParseFile` returns `node.Imports`, so you can map
-each local name to its import path and check the path rather than the
-qualifier — and this ORM does not do it. Both of these are filed.
+each local name to its import path and check the path rather than the qualifier.
 
-I am dwelling on them because they are the shape of every bug in this course.
-Not crashes. **Two readers quietly disagreeing about one input**, where the
-runtime is right and the CLI writes a migration missing a column.
+That gap between "the function is wrong" and "the output is wrong" is worth
+sitting with. I found the first by reading the code, assumed the second, and was
+wrong until I ran the real loader. A default was hiding it. Defaults move.
 
 ## Two readers, one grammar
 
@@ -270,10 +307,10 @@ until the other agrees.
 And it is worth being precise about what it does not buy you. Look at how
 `paritySource` builds its tags: string concatenation, producing **backticks
 every time**. So it cannot catch the double-quoted tag from earlier in this
-course, and it has no aliased import, so it cannot catch the nullability gap
-either. A parity test proves the paths agree **on the inputs you gave it**.
-Both bugs in this course live in the gap between that and "agree on all valid
-Go".
+course, and it has no aliased import with a contradictory `notNull`, so it
+cannot catch the nullability corner either. A parity test proves the paths agree
+**on the inputs you gave it**. Both bugs in this course live in the gap between
+that and "agree on all valid Go".
 
 ## Build something
 

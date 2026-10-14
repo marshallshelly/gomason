@@ -112,6 +112,56 @@ The multi-word types are the detail that bites: your cast regex must try
 `::character varying` before `::character`, or you strip half a type name and
 leave the word `varying` in the string.
 
+## Your turn: the change that never shows up
+
+Normalising makes the second `generate` empty. Now make sure the first one is
+not. Take the CHECK from above, apply it, then add a value in the struct tag:
+
+```go
+Status string `po:"status,text,check(status IN ('free','premium','trial'))"`
+```
+
+**Predict what `generate` emits.**
+
+```text
+✓ No schema changes detected. Models are already in sync.
+```
+
+Nothing. The CHECK is still called `users_status_check`, and a differ that keys
+CHECKs by name finds that name on both sides and stops looking. The new value
+never reaches the database, and the first sign is an insert failing in
+production.
+
+Notice that every empty-diff test still passes. A differ that never compares a
+CHECK's body *cannot* phantom-diff one. The name is how you find the pair; it is
+not proof the pair is the same.
+
+So compare the body as well. When it differs, the constraint appears in the diff
+as both a drop and an add, exactly like a modified index. And your normaliser now
+needs more than parentheses, because of what Postgres stores for a CHECK. Write
+these and run them; every right-hand side is real `pg_get_constraintdef` output
+from Postgres 18, with the leading `CHECK` removed (`kind` and `e` are `varchar`,
+`n` is `integer`):
+
+```text
+kind IN ('a','b')     (((kind)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[])))
+kind IN ('only')      (((kind)::text = 'only'::text))
+n BETWEEN 1 AND 5     (((n >= 1) AND (n <= 5)))
+e LIKE '%@%'          (((e)::text ~~ '%@%'::text))
+n != 0                ((n <> 0))
+n > -1                ((n > '-1'::integer))
+```
+
+A one-element `IN` turns into `=`, not `= ANY`. `LIKE` becomes the operator
+`~~`. A negative number gets quoted. **Each of these is a phantom diff against a
+live database until your normaliser undoes it.**
+
+One trap applies to all of them: **set the string literals aside before you
+lowercase anything.** Lowercase the whole expression and `IN ('Active')` versus
+`IN ('active')` compares equal, which is the bug you started with in a smaller
+form. Pull every `'...'` out first, normalise what is left, and compare the
+literals exactly.
+
 ## Your turn: the bug that only appears on a big schema
 
 Here is one that passes every unit test and fails on a real database.
@@ -183,6 +233,32 @@ inventing new failure modes.
 
 </details>
 
+### Now fix the other side
+
+Truncating the names you generate fixes the live path. Then someone upgrades,
+runs `generate` without a database, and **the same drop/add comes back**.
+
+Offline `generate` reads the old `*.up.sql` files. Those were written before the
+fix, so they spell the full 67-byte name. Your models now produce the 63-byte
+one. The server holds the 63-byte one too, because it cut the name when that old
+migration ran. Two of the three agree, and the differ is looking at the third.
+
+It is worse than noise:
+
+```text
+ERROR:  constraint "fk_client_schedule_blocks_generation_id_client_schedule_generat"
+        for relation "client_schedule_blocks" already exists
+```
+
+The `ADD` uses a name the server already holds, so the generated migration does
+not even apply.
+
+A name comparison has two inputs, and you fixed one. **Compare names the way
+the server stores them**: put both sides through `TruncateIdent` when you build
+the lookup key, and do the same for names in `DROP CONSTRAINT` and `DROP INDEX`.
+Fix the comparison, not the inputs, and every input is covered, including one
+you have not met yet.
+
 ## Order is not a detail
 
 Plan has to emit statements in an order the database will accept. **Predict what
@@ -233,6 +309,19 @@ drop what you added, then recreate what you dropped. Getting one of the four
 orderings wrong produces a migration that applies cleanly and leaves the schema
 wrong.
 
+The same rule applies to every object that can be modified in place, not just
+indexes. When the differ learned to replace a changed CHECK, the planner was
+still emitting constraint adds before drops, and the result was:
+
+```sql
+ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (...);   -- already exists
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
+```
+
+Order was never wrong before, because before that change a constraint could not
+appear on both sides. **Adding a new kind of change can break an ordering that
+used to be safe.**
+
 ## The test that is the only real test
 
 Unit tests cannot catch most of this course. Every bug above passes a
@@ -244,10 +333,14 @@ The test that works is the round trip:
 1. Generate from your models into an empty directory.
 2. Apply it to a real database.
 3. **Generate again. Assert the output is empty.**
-4. Change one column. Generate, apply, generate again. Assert empty.
+4. Change one thing. **Assert the generate is not empty**, apply it, then
+   generate again and assert empty.
 
-Step 3 is the whole thing. It needs no expected output — the assertion is just
-"nothing", which nobody can accidentally write to match a bug.
+Step 3 needs no expected output. The assertion is just "nothing", which nobody
+can accidentally write to match a bug. Step 4's first assertion is its partner:
+a differ that never looks passes step 3, and only a real change catches it. Do
+step 4 once for every kind of object, including a CHECK, a default and an index
+predicate, not just a column.
 
 Run it on a schema big enough to contain the inputs you did not think of. The
 four bugs in this course were found that way, on 79 tables with 87 foreign keys,
@@ -264,6 +357,13 @@ Two of those four bugs needed a table name long enough to overflow 63 bytes, and
 one needed a column called `checked_on` — a name that began with `CHECK` and so
 got mistaken for a constraint clause and silently dropped. No hand-written test
 fixture was ever going to contain either.
+
+The same schema then passed that round trip and still had two bugs. Both turned
+up when its team added one value to a CHECK. The CHECK change was missing,
+because that round trip never changed a CHECK. The drop/add pairs were bogus,
+because the migrations it replayed were all written by the fixed generator and
+none spelled a long name in full. A round trip only tests the history you give
+it. **Replay real, old migrations, not just ones your current code wrote.**
 
 There is a second round trip worth asserting, and it is easy to forget: the
 **offline** path. `pebble generate` with no `--db` replays your existing
@@ -313,11 +413,15 @@ Then write the tests that matter, which are the ones asserting **nothing**:
 | identical schemas | `Diff` is empty |
 | the same partial index, one side parenthesised | empty |
 | the same CHECK, one side rewritten as `= ANY (ARRAY[...])` | empty |
-| an FK whose generated name exceeds 63 bytes | empty |
+| an FK named in full on one side and truncated to 63 bytes on the other | empty |
 | a column genuinely added | exactly one `ColumnsAdded` |
+| the same CHECK name with a value added to its `IN` list | one drop and one add |
+| a CHECK literal changed from `'Active'` to `'active'` | one drop and one add |
 
 The first four are phantom-diff tests. Write them before the canonicalizer and
-watch all four fail.
+watch all four fail. The last three are their partners: write them, comment out
+the body comparison, and watch the CHECK ones pass with an empty diff they
+should have failed.
 
 If you have Docker, do the full round trip too. It is twenty lines and it is
 worth more than every other test in this course combined.
@@ -343,15 +447,17 @@ own variation — whitespace, case, parentheses someone typed by hand — and a
 one-sided normaliser is a phantom diff waiting for the first person who formats
 their tag differently.
 
-**Compare constraints by name, indexes by name and columns, and UNIQUE by
-columns.** Those are not arbitrary. A UNIQUE constraint's *name* is often
-generated by the database, so keying on it phantom-diffs; its columns are stable.
-A CHECK's columns are not knowable from the stored text without parsing SQL, so
-its name is all you have. Each key is the thing that does not change.
+**Pair by a stable key, then compare the body.** UNIQUE is keyed by columns,
+because its *name* is often generated by the database and keying on it
+phantom-diffs. A CHECK is keyed by name, because its columns are not knowable
+from the stored text without parsing SQL. Every name goes through
+`TruncateIdent` before it becomes a key. But a key only says which two things to
+compare. If the key is all you check, editing a CHECK under the same name is
+invisible.
 
-**The empty-diff tests are the valuable ones.** A test asserting a specific
-change passes against a differ that reports everything. A test asserting
-*nothing* only passes when the comparison is right.
+**You need both kinds of test.** A test asserting a specific change passes
+against a differ that reports everything. A test asserting *nothing* passes
+against a differ that never looks. Each catches the failure the other cannot.
 
 </details>
 

@@ -8,7 +8,7 @@ topics:
   - diffing
   - topological sort
   - idempotency
-minutes: 75
+minutes: 85
 draft: false
 ---
 
@@ -322,6 +322,81 @@ Order was never wrong before, because before that change a constraint could not
 appear on both sides. **Adding a new kind of change can break an ordering that
 used to be safe.**
 
+## Your turn: one constraint, two doors
+
+A column can be made unique two ways. The tag, which lets Postgres name the
+constraint, and a table directive, which names it yourself:
+
+```go
+// table_name: invoices
+// unique: uq_invoices_seq (seq)
+type Invoice struct {
+	ID     int    `po:"id,primaryKey,integer"`
+	Number string `po:"number,varchar(40),notNull,unique"`
+	Seq    *int   `po:"seq,integer"`
+}
+```
+
+Generate into an empty directory. **Predict where each UNIQUE ends up.**
+
+```sql
+CREATE TABLE IF NOT EXISTS invoices (
+    id integer NOT NULL PRIMARY KEY,
+    number varchar(40) NOT NULL UNIQUE,
+    seq integer
+);
+```
+
+`number` is there, inline. `uq_invoices_seq` is nowhere. Generate again:
+
+```text
+~ invoices (modified)
+ALTER TABLE invoices ADD CONSTRAINT uq_invoices_seq UNIQUE (seq);
+```
+
+So the constraint *can* be emitted: the `ALTER` path writes it correctly. Only
+`CREATE TABLE` drops it, and it will be "added" again on every generate, forever.
+
+Here is the line in the `CREATE TABLE` path:
+
+```go
+case schema.UniqueConstraint:
+	if len(constraint.Columns) > 1 {
+		parts = append(parts, fmt.Sprintf("    CONSTRAINT %s UNIQUE (%s)", ...))
+	}
+```
+
+**Read the condition as an assumption.** A tag-unique column gets `UNIQUE` inline,
+so its constraint must not be declared a second time, and the author encoded
+that as "skip every one-column UNIQUE". That was true when the tag was the only
+way to get one. The directive opened a second door, and the rule was still
+checking the *shape* of the constraint instead of *where it came from*.
+
+The fix asks the real question: is this the constraint the column's own `UNIQUE`
+already creates? That means one column, the tag's default name
+(`invoices_number_key`), and the column flagged unique. Everything else is
+declared by name:
+
+```sql
+CREATE TABLE IF NOT EXISTS invoices (
+    id integer NOT NULL PRIMARY KEY,
+    number varchar(40) NOT NULL UNIQUE,
+    seq integer,
+    CONSTRAINT uq_invoices_seq UNIQUE (seq)
+);
+```
+
+That forced a second, quieter fix. Replaying `ADD CONSTRAINT uq_x UNIQUE (seq)`
+offline used to flag `seq` as unique, so **one boolean meant two things**: "the
+tag is on" to the parser, "some one-column UNIQUE exists" to the replay. With the
+new rule, a flagged `seq` gets an extra unnamed inline `UNIQUE`, and the name
+`uq_x` is lost whenever the table is recreated. Pin the flag to one meaning, the
+tag's default-named constraint, and make every reader agree.
+
+**Whenever two code paths emit the same object, test both.** Here the diff path
+had been right all along. Only a migration generated from nothing goes through
+`CREATE TABLE`, and that is exactly the migration nobody regenerates.
+
 ## The test that is the only real test
 
 Unit tests cannot catch most of this course. Every bug above passes a
@@ -364,6 +439,12 @@ because that round trip never changed a CHECK. The drop/add pairs were bogus,
 because the migrations it replayed were all written by the fixed generator and
 none spelled a long name in full. A round trip only tests the history you give
 it. **Replay real, old migrations, not just ones your current code wrote.**
+
+It also only tests the shapes your schema contains. The same schema passed
+again, and then gained their first one-column `// unique:` directive, and the
+next baseline silently left it out. Nothing about the test was wrong; the input
+simply had not existed yet. When you add a feature, add one model that uses it
+to the round-trip fixture.
 
 There is a second round trip worth asserting, and it is easy to forget: the
 **offline** path. `pebble generate` with no `--db` replays your existing
@@ -423,6 +504,11 @@ watch all four fail. The last three are their partners: write them, comment out
 the body comparison, and watch the CHECK ones pass with an empty diff they
 should have failed.
 
+Then one test the diff alone cannot cover, because it goes through the planner:
+plan a table with a tag-unique column and a one-column `// unique:` directive
+from nothing, replay that SQL, and assert the diff against the models is empty.
+It fails if `CREATE TABLE` drops either constraint, or declares the tag's twice.
+
 If you have Docker, do the full round trip too. It is twenty lines and it is
 worth more than every other test in this course combined.
 
@@ -454,6 +540,24 @@ from the stored text without parsing SQL. Every name goes through
 `TruncateIdent` before it becomes a key. But a key only says which two things to
 compare. If the key is all you check, editing a CHECK under the same name is
 invisible.
+
+**Decide by identity, not by shape.** "One column" is a shape; "the constraint
+the tag creates" is an identity. The planner skips a UNIQUE in `CREATE TABLE`
+only when it is the second:
+
+```go
+func inlineUnique(table *TableMetadata, c ConstraintMetadata) bool {
+	if len(c.Columns) != 1 || c.Name != ColumnUniqueName(table.Name, c.Columns[0]) {
+		return false
+	}
+	for _, col := range table.Columns {
+		if col.Name == c.Columns[0] {
+			return col.Unique
+		}
+	}
+	return false
+}
+```
 
 **You need both kinds of test.** A test asserting a specific change passes
 against a differ that reports everything. A test asserting *nothing* passes

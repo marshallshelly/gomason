@@ -153,18 +153,62 @@ BenchmarkScan1000RowsByIndex-11     38421 ns/op   0 allocs/op
 registry already resolved — comparable to the entire network round trip for the
 same query.
 
-The fix is to store the field index at registration time and use `Field(i)`.
-Which this ORM does not do: `scanner.go` calls `FieldByName` in three places. The
-metadata even carries a `Position` field holding `field.Index[0]`, so the index is
-sitting right there unused.
+The name only needs resolving once. A result's columns cannot change halfway
+through it, so work out where each column goes on the first row, keep the index,
+and use it for every row after:
 
-I am telling you this because the interesting part is *why* it is still like
-that. The two schema paths disagree about what `Position` means — the reflection
-parser stores the struct field index, the AST loader stores a column counter — so
-using it as an index is only safe for models registered the first way. Making it
-load-bearing means reconciling the two paths first. That is a real piece of
-work, not an oversight, and it is the kind of thing you find by benchmarking
-rather than by reading.
+```go
+type rowScanner struct {
+	table      *TableMetadata
+	structType reflect.Type
+	fields     []scanField
+	targets    []any
+}
+
+type scanField struct {
+	position int   // the column's position in the result
+	index    []int // the field's reflect index path
+}
+
+func (s *rowScanner) scan(rows pgx.Rows, dest any) error {
+	v := reflect.ValueOf(dest).Elem()
+	if s.structType != v.Type() {
+		s.plan(rows, v) // first row: FieldByName, once per column
+	}
+	for _, f := range s.fields {
+		s.targets[f.position] = v.FieldByIndex(f.index).Addr().Interface()
+	}
+	return rows.Scan(s.targets...)
+}
+```
+
+Each result loop makes one `rowScanner` and calls `scan` for every row. The
+`targets` slice is reused too, so a plain row now costs no allocations beyond the
+struct itself. On a 5-column table the scanner went from about 570 ns to 120 ns a
+row, and the cost over a hand-written `rows.Scan` at 1,000 rows fell from 11–42%
+to 3–6%. Course 08's rule, measured on your own code: resolve the name once, then
+use the index.
+
+**Predict: why doesn't the plan just use `Position`?** The metadata already has a
+`Position` field holding `field.Index[0]`, sitting right there.
+
+Because the two schema paths disagree about what it means. The reflection parser
+stores the struct field index, and the AST loader stores a column counter. It
+looks right on every model registered through reflection and is wrong for the
+CLI's. Asking `reflect.Type` for the index when the first row arrives needs
+neither path to change.
+
+**Now break it.** Reuse is where this can go wrong, so write the test first. Scan
+a row with `{"theme":"dark"}` in a JSONB column, then a row where that column is
+`NULL`, using a single intermediate target held on the scanner.
+
+```text
+second row: &{Theme:dark}
+```
+
+The second row inherited the first row's value, because a `NULL` writes nothing.
+That is why the real scanner reuses the slice of targets but builds JSONB and array
+targets fresh for each row. Cache what the *result* fixes, never what a *row* owns.
 
 ## One interface, two callers
 
@@ -320,9 +364,10 @@ func (q *SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	defer rows.Close()
 
 	var out []T
+	scanner := &rowScanner{table: q.table}
 	for rows.Next() {
 		var item T
-		if err := scanIntoStruct(rows, &item, q.table); err != nil {
+		if err := scanner.scan(rows, &item); err != nil {
 			return nil, err
 		}
 		out = append(out, item)

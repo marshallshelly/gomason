@@ -9,7 +9,7 @@ topics:
   - row scanning
   - interfaces
   - batching
-minutes: 60
+minutes: 65
 draft: false
 ---
 
@@ -324,10 +324,121 @@ The saving is a round trip per sibling, so it grows with network distance.
 Queries that pgx hasn't seen before cost a second round trip to prepare, for
 the whole batch at once, exactly as a single `Query` does.
 
-Grouping by depth also requires merging the paths first. `"Posts"` and
-`"Posts.Comments"` both name `Posts`, and this ORM once loaded it for each name.
-hasMany appends, so every post came back twice. Building the paths into a tree
-before loading anything makes each field appear once.
+### Predict: how many posts?
+
+Grouping by depth means deciding what each depth contains, and that is where
+this ORM had a bug for ten months. The loader before batching ran in two
+passes:
+
+1. Load every direct preload: `"Posts"`.
+2. For every nested path, load its first field, then the rest on what came
+   back. `"Posts.Comments"` loads `Posts`, then `Comments` on each post.
+
+The hasMany loader gives the field an empty slice if it is nil, runs one
+`= ANY($1)` query, and appends each row to its parent.
+
+A user has two posts. **Predict `len(user.Posts)`:**
+
+```go
+users, err := builder.Select[User](qb).
+	Preload("Posts").
+	Preload("Posts.Comments").
+	All(ctx)
+```
+
+```text
+4
+```
+
+Pass 1 appended the two posts. Pass 2 loaded `Posts` again, found a slice that
+was not nil, and appended the same two rows a second time. Then it loaded
+comments onto all four, so the duplicates looked completely real. No error, no
+warning, every request.
+
+It needs both names to happen. `Preload("Posts.Comments")` on its own was always
+right, and that is the only form the nested-preload test used. A real app
+listed both and showed every staff member on a task twice.
+
+Two ingredients made it, and both are worth recognising elsewhere:
+
+- **The work ran once per name, not once per thing.** Two strings naming one
+  relationship meant two loads.
+- **The operation was not idempotent.** A belongsTo loaded twice overwrites the
+  same field and nobody notices. A slice loaded twice grows.
+
+The fix removes the first ingredient. Before loading anything, merge the paths
+into a tree, so each field exists once however many paths mention it:
+
+```go
+type preloadTree map[string]preloadTree
+
+func buildPreloadTree(paths []string) preloadTree {
+	root := preloadTree{}
+	for _, path := range paths {
+		node := root
+		for _, field := range strings.Split(path, ".") {
+			if node[field] == nil {
+				node[field] = preloadTree{}
+			}
+			node = node[field]
+		}
+	}
+	return root
+}
+```
+
+`"Posts"` and `"Posts.Comments"` become one `Posts` node with `Comments` under
+it. The tree is also exactly what batching needs: its first level is the first
+batch, the second level the second.
+
+### One parent, many copies
+
+The same release fixed a quieter bug, and it is course 03's value-versus-pointer
+rule turning up somewhere unexpected. A post belongs to its author, held by
+value:
+
+```go
+type Post struct {
+	ID       int
+	AuthorID int
+	Author   Author `po:"-,belongsTo,foreignKey(author_id),references(id)"`
+}
+```
+
+Two posts by the same author each get **their own copy** of that author.
+`Preload("Author.Profile")` then has to load a profile onto both copies. The
+loader collected each parent's key into a map so it could match rows back:
+
+```go
+byKey := make(map[interface{}]int) // key -> index of its object
+```
+
+Both copies have key `1`, so the second write replaced the first. Only the last
+post's author got a profile; the first stayed empty. The map needs every index
+that has the key:
+
+```go
+byKey := make(map[interface{}][]int)
+```
+
+That creates the opposite problem for `Author *Author`. Both posts now point at
+**one** author, so the collection holds the same pointer twice, and a hasMany
+under it would append each row twice: the first bug again. Collecting the next
+depth skips a pointer it has already seen:
+
+```go
+seen := make(map[uintptr]bool)
+add := func(ptr reflect.Value) {
+	if !seen[ptr.Pointer()] {
+		seen[ptr.Pointer()] = true
+		collected = reflect.Append(collected, ptr)
+	}
+}
+```
+
+Value copies are separate objects and each one is loaded; a shared pointer is
+one object and is loaded once. The test for this keeps both fields on one
+model, so a fix for either case that breaks the other fails immediately.
 
 ## Why not database/sql?
 

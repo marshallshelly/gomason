@@ -8,7 +8,8 @@ topics:
   - connection pools
   - row scanning
   - interfaces
-minutes: 55
+  - batching
+minutes: 60
 draft: false
 ---
 
@@ -282,6 +283,51 @@ if len(preloads) > 0 && len(results) > 0 {
 
 A `defer rows.Close()` is still there for every other exit. Closing twice is
 harmless; closing too late is a deadlock.
+
+## One round trip per depth
+
+`Preload("Profile", "Posts", "Posts.Comments")` needs four queries: users, then
+profiles and posts, which only need the user IDs, then comments, which need the
+post IDs. The first two preloads don't depend on each other, so there is no
+reason to wait for one before sending the other. pgx's `Batch` sends several
+queries in one pipeline:
+
+```go
+batch := &pgx.Batch{}
+batch.Queue(profilesSQL, userIDs).Query(func(rows pgx.Rows) error {
+	// scan and assign profiles
+})
+batch.Queue(postsSQL, userIDs).Query(func(rows pgx.Rows) error {
+	// scan and assign posts
+})
+if err := exec.SendBatch(ctx, batch).Close(); err != nil {
+	return err
+}
+// posts are loaded: queue comments on their IDs, send the next batch
+```
+
+The callbacks run inside `Close`, in the order the queries were queued, and
+`Close` has finished reading the batch before it returns. That is the
+one-connection rule from the transaction section again: the next depth can't be
+sent until this one has been read, and here that happens on its own. `pgx.Tx`
+has `SendBatch` too, so the same code runs inside a transaction.
+
+Measured against PostgreSQL 18, one user with two sibling preloads:
+
+```text
+                       loopback   1 ms round trip
+one query at a time      400µs        6.1ms
+one batch                290µs        4.3ms
+```
+
+The saving is a round trip per sibling, so it grows with network distance.
+Queries that pgx hasn't seen before cost a second round trip to prepare, for
+the whole batch at once, exactly as a single `Query` does.
+
+Grouping by depth also requires merging the paths first. `"Posts"` and
+`"Posts.Comments"` both name `Posts`, and this ORM once loaded it for each name.
+hasMany appends, so every post came back twice. Building the paths into a tree
+before loading anything makes each field appear once.
 
 ## Why not database/sql?
 
